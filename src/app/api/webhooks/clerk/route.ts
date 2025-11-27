@@ -46,14 +46,15 @@ export async function POST(req: Request) {
   }
 
   // Handle the webhook
-  const eventType = evt.type;
+  const eventType = evt.type as string;
 
   if (eventType === "user.created") {
-    const { id, email_addresses } = evt.data;
+    const userData = evt.data as any;
+    const { id, email_addresses } = userData;
 
     // Get the primary email address
     const primaryEmail = email_addresses.find(
-      (email: any) => email.id === evt.data.primary_email_address_id
+      (email: any) => email.id === userData.primary_email_address_id
     )?.email_address;
 
     if (!primaryEmail) {
@@ -89,11 +90,12 @@ export async function POST(req: Request) {
   }
 
   if (eventType === "user.updated") {
-    const { id, email_addresses } = evt.data;
+    const userData = evt.data as any;
+    const { id, email_addresses } = userData;
 
     // Get the primary email address
     const primaryEmail = email_addresses.find(
-      (email: any) => email.id === evt.data.primary_email_address_id
+      (email: any) => email.id === userData.primary_email_address_id
     )?.email_address;
 
     if (primaryEmail) {
@@ -115,7 +117,8 @@ export async function POST(req: Request) {
   }
 
   if (eventType === "user.deleted") {
-    const { id } = evt.data;
+    const userData = evt.data as any;
+    const { id } = userData;
 
     try {
       // Delete user from database (cascade will handle related records)

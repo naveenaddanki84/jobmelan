@@ -43,6 +43,8 @@ export interface ResumeSchema {
       phone: boolean;
       location: boolean;
     };
+    noEducation?: boolean; // Flag to indicate user has no education to show
+    noExperience?: boolean; // Flag to indicate user has no experience to show
   };
   basics: {
     name: string;
