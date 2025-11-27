@@ -31,8 +31,7 @@ export const SkillsSection: React.FC<Props> = ({ resumeId, content }) => {
     const handleAddItem = () => {
         setItems([...items, {
             category: '',
-            keywords: [],
-            level: ''
+            keywords: []
         }]);
     };
 

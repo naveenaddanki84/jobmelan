@@ -123,7 +123,7 @@ export const DocumentsSection: React.FC<Props> = ({ documents }) => {
                         filename: `${title.replace(/\s+/g, '_')}_Resume.pdf`,
                         image: { type: 'jpeg' as const, quality: 0.98 },
                         html2canvas: { scale: 2, useCORS: true, logging: false, allowTaint: true, backgroundColor: '#ffffff' },
-                        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+                        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' as const }
                     };
 
                     await html2pdf().set(opt).from(element).save();

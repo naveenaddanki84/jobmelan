@@ -43,7 +43,7 @@ export const PersonalSection: React.FC<Props> = ({ resumeId, content }) => {
 
     const handleProfileChange = (index: number, field: keyof ResumeSchema['basics']['profiles'][0], value: string) => {
         const newProfiles = [...formData.profiles];
-        newProfiles[index][field] = value;
+        (newProfiles[index] as any)[field] = value;
         setFormData({ ...formData, profiles: newProfiles });
     };
 

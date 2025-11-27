@@ -782,6 +782,7 @@ export const ProfileResumeEditor: React.FC<ProfileResumeEditorProps> = ({ resume
             {/* Upgrade Prompt Modal */}
             {showUpgradePrompt && (
                 <UpgradePrompt
+                    isOpen={showUpgradePrompt}
                     feature={upgradeFeature}
                     onClose={() => setShowUpgradePrompt(false)}
                 />

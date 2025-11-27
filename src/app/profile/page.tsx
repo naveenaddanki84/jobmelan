@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import { Navbar } from '@/components/Navbar';
 import { getProfileData } from '@/actions/profile-actions';
 import { ResumeSchema } from '@/types';
@@ -17,7 +17,7 @@ import { EqualEmploymentSection } from '@/components/profile/EqualEmploymentSect
 import { CompletionCard } from '@/components/profile/CompletionCard';
 import { DeleteAccountSection } from '@/components/profile/DeleteAccountSection';
 
-export default function ProfilePage() {
+function ProfilePageContent() {
     const searchParams = useSearchParams();
     const isOnboarding = searchParams?.get('onboarding') === 'true';
 
@@ -119,5 +119,17 @@ export default function ProfilePage() {
                 <DeleteAccountSection />
             </main>
         </div>
+    );
+}
+
+export default function ProfilePage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-stone-50 flex items-center justify-center">
+                <Loader2 className="w-8 h-8 animate-spin text-brand-600" />
+            </div>
+        }>
+            <ProfilePageContent />
+        </Suspense>
     );
 }

@@ -37,15 +37,13 @@ export const EducationSection: React.FC<Props> = ({ resumeId, content, noEducati
 
     const handleAddItem = () => {
         setItems([...items, {
+            id: crypto.randomUUID(),
             institution: '',
-            url: '',
             area: '',
             studyType: '',
-            startDate: '',
-            endDate: '',
+            date: '',
             score: '',
-            courses: [],
-            date: '' // Legacy field support
+            courses: []
         }]);
     };
 
@@ -132,7 +130,7 @@ export const EducationSection: React.FC<Props> = ({ resumeId, content, noEducati
                                         <label className="text-xs font-bold text-stone-500 uppercase tracking-wider mb-1 block">Date Range</label>
                                         <input
                                             className="w-full bg-white border border-stone-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500/10 focus:border-brand-500 outline-none"
-                                            value={item.date || item.startDate} // Handle both formats
+                                            value={item.date || ''}
                                             onChange={(e) => handleChange(i, 'date', e.target.value)}
                                             placeholder="e.g. 2018 - 2022"
                                         />
@@ -185,7 +183,7 @@ export const EducationSection: React.FC<Props> = ({ resumeId, content, noEducati
 
                             <div className="text-xs text-stone-500 mb-1 font-medium flex items-center gap-1">
                                 <Calendar className="w-3 h-3" />
-                                {edu.date || `${edu.startDate} - ${edu.endDate}`}
+                                {edu.date || 'Date not specified'}
                             </div>
 
                             <h3 className="text-lg font-bold text-stone-900">{edu.institution}</h3>

@@ -66,7 +66,7 @@ export async function getProfileData() {
 
         // Calculate profile completion
         const completion = profileContent
-            ? calculateProfileCompletion(profileContent, user?.equalEmployment)
+            ? await calculateProfileCompletion(profileContent, user?.equalEmployment)
             : { percentage: 0, incomplete: [], complete: [] };
 
         return {
