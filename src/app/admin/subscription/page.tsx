@@ -29,13 +29,41 @@ export default function SubscriptionAdminPage() {
     }
   };
 
-  const handleManualUpdate = async (isPro: boolean) => {
+  const handleManualUpdate = async (isPro: boolean, targetUserId?: string) => {
     setLoading(true);
     setMessage(null);
     try {
-      const result = await updateSubscriptionStatus(isPro);
-      setMessage(`✅ Updated: isPro=${result.isPro}`);
+      const result = await updateSubscriptionStatus(isPro, undefined, targetUserId);
+      setMessage(`✅ Updated user ${result.userId}: isPro=${result.isPro}, planId=${result.clerkPlanId}`);
       await loadStatus();
+    } catch (error: any) {
+      setMessage(`Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSyncViaAPI = async () => {
+    setLoading(true);
+    setMessage(null);
+    try {
+      const response = await fetch('/api/admin/sync-subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user?.id,
+          isPro: true,
+          planId: 'cplan_35lmOqzm4DkZ9qKirzLMaU5cImq'
+        })
+      });
+      
+      const data = await response.json();
+      if (response.ok) {
+        setMessage(`✅ Synced via API: isPro=${data.isPro}`);
+        await loadStatus();
+      } else {
+        setMessage(`Error: ${data.error}`);
+      }
     } catch (error: any) {
       setMessage(`Error: ${error.message}`);
     } finally {
@@ -110,7 +138,7 @@ export default function SubscriptionAdminPage() {
 
             <div className="pt-4 border-t border-stone-200">
               <h3 className="font-bold mb-2">Quick Actions</h3>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button 
                   variant="primary" 
                   onClick={loadStatus}
@@ -127,12 +155,25 @@ export default function SubscriptionAdminPage() {
                   Set Pro (Manual)
                 </Button>
                 <Button 
+                  variant="secondary" 
+                  onClick={handleSyncViaAPI}
+                  disabled={loading}
+                >
+                  Sync via API
+                </Button>
+                <Button 
                   variant="outline" 
                   onClick={() => handleManualUpdate(false)}
                   disabled={loading}
                 >
                   Remove Pro
                 </Button>
+              </div>
+              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-xs text-yellow-800">
+                  <strong>Quick Fix:</strong> If webhook isn't working, click "Set Pro (Manual)" to immediately grant Pro access. 
+                  The user will have Pro features available right away.
+                </p>
               </div>
             </div>
 

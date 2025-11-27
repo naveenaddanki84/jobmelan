@@ -1,0 +1,466 @@
+/* JobMélan Copilot - Content Script Styles */
+
+/* Trigger Button */
+#jobmelan-copilot-trigger {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 56px;
+  height: 56px;
+  background: linear-gradient(135deg, #5c824d 0%, #76a465 100%);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(92, 130, 77, 0.4);
+  z-index: 999998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 0;
+}
+
+#jobmelan-copilot-trigger:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 20px rgba(92, 130, 77, 0.5);
+}
+
+#jobmelan-copilot-trigger:active {
+  transform: scale(0.95);
+}
+
+#jobmelan-copilot-trigger svg {
+  width: 28px;
+  height: 28px;
+}
+
+/* Panel */
+#jobmelan-copilot-panel {
+  position: fixed;
+  bottom: 90px;
+  right: 24px;
+  width: 380px;
+  max-height: 80vh;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  z-index: 999999;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  transform: translateY(20px) scale(0.95);
+  pointer-events: none;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid #e7e5e4;
+  overflow: hidden;
+}
+
+#jobmelan-copilot-panel.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: all;
+}
+
+/* Panel Header */
+.jobmelan-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e7e5e4;
+  background: linear-gradient(135deg, #5c824d 0%, #76a465 100%);
+  color: white;
+}
+
+.jobmelan-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.jobmelan-panel-title svg {
+  width: 20px;
+  height: 20px;
+}
+
+.jobmelan-close-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: white;
+  transition: background 0.2s;
+  padding: 0;
+}
+
+.jobmelan-close-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Panel Content */
+.jobmelan-panel-content {
+  padding: 20px;
+  overflow-y: auto;
+  max-height: calc(80vh - 70px);
+}
+
+/* Loading State */
+.jobmelan-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+  color: #78716c;
+}
+
+.jobmelan-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #e7e5e4;
+  border-top-color: #5c824d;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Login Required */
+.jobmelan-login-required {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.jobmelan-login-required .jobmelan-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.jobmelan-login-required h3 {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1c1917;
+}
+
+.jobmelan-login-required p {
+  margin: 0 0 24px 0;
+  color: #78716c;
+  font-size: 14px;
+}
+
+/* Job Preview */
+.jobmelan-job-preview {
+  background: #fafaf9;
+  border: 1px solid #e7e5e4;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.jobmelan-job-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1c1917;
+  margin-bottom: 8px;
+}
+
+.jobmelan-job-company {
+  font-size: 15px;
+  font-weight: 600;
+  color: #5c824d;
+  margin-bottom: 4px;
+}
+
+.jobmelan-job-location {
+  font-size: 13px;
+  color: #78716c;
+}
+
+/* Form Elements */
+.jobmelan-form-group {
+  margin-bottom: 20px;
+}
+
+.jobmelan-form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #78716c;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.jobmelan-select {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid #d6d3d1;
+  border-radius: 10px;
+  background: white;
+  font-size: 14px;
+  color: #1c1917;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L6 6L11 1' stroke='%2378716c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 40px;
+}
+
+.jobmelan-select:hover {
+  border-color: #5c824d;
+}
+
+.jobmelan-select:focus {
+  outline: none;
+  border-color: #5c824d;
+  box-shadow: 0 0 0 3px rgba(92, 130, 77, 0.1);
+}
+
+/* Buttons */
+.jobmelan-btn {
+  width: 100%;
+  padding: 14px 20px;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-decoration: none;
+}
+
+.jobmelan-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.jobmelan-btn-primary {
+  background: linear-gradient(135deg, #5c824d 0%, #76a465 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(92, 130, 77, 0.3);
+}
+
+.jobmelan-btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(92, 130, 77, 0.4);
+}
+
+.jobmelan-btn-secondary {
+  background: white;
+  color: #5c824d;
+  border: 2px solid #5c824d;
+}
+
+.jobmelan-btn-secondary:hover {
+  background: #fafaf9;
+}
+
+.jobmelan-btn-ghost {
+  background: transparent;
+  color: #78716c;
+  border: 1px solid #e7e5e4;
+}
+
+.jobmelan-btn-ghost:hover {
+  background: #fafaf9;
+  border-color: #d6d3d1;
+}
+
+.jobmelan-btn-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Progress Steps */
+.jobmelan-progress {
+  margin-top: 24px;
+}
+
+.jobmelan-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  transition: all 0.2s;
+}
+
+.jobmelan-step.active {
+  background: #f0f7ed;
+  border: 1px solid #d4e6c9;
+}
+
+.jobmelan-step.done {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+
+.jobmelan-step.error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.jobmelan-step-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+  background: #e7e5e4;
+  color: #78716c;
+  border: 2px solid #e7e5e4;
+  transition: all 0.2s;
+}
+
+.jobmelan-step.active .jobmelan-step-icon {
+  background: #5c824d;
+  border-color: #5c824d;
+  color: white;
+  animation: pulse 2s infinite;
+}
+
+.jobmelan-step.done .jobmelan-step-icon {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: white;
+}
+
+.jobmelan-step.error .jobmelan-step-icon {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: white;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.jobmelan-step-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.jobmelan-step-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1c1917;
+  margin-bottom: 2px;
+}
+
+.jobmelan-step-desc {
+  font-size: 12px;
+  color: #78716c;
+}
+
+.jobmelan-step.active .jobmelan-step-title {
+  color: #5c824d;
+}
+
+.jobmelan-step.done .jobmelan-step-title {
+  color: #16a34a;
+}
+
+/* Error Message */
+.jobmelan-error {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  color: #dc2626;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Success Message */
+.jobmelan-success {
+  text-align: center;
+  padding: 32px 20px;
+}
+
+.jobmelan-success-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  font-weight: 700;
+  margin: 0 auto 20px;
+  box-shadow: 0 4px 12px rgba(22, 163, 74, 0.3);
+}
+
+.jobmelan-success h3 {
+  margin: 0 0 8px 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #1c1917;
+}
+
+.jobmelan-success p {
+  margin: 0 0 24px 0;
+  color: #78716c;
+  font-size: 14px;
+}
+
+.jobmelan-success-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Scrollbar */
+.jobmelan-panel-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.jobmelan-panel-content::-webkit-scrollbar-track {
+  background: #fafaf9;
+}
+
+.jobmelan-panel-content::-webkit-scrollbar-thumb {
+  background: #d6d3d1;
+  border-radius: 3px;
+}
+
+.jobmelan-panel-content::-webkit-scrollbar-thumb:hover {
+  background: #a8a29e;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  #jobmelan-copilot-panel {
+    width: calc(100vw - 48px);
+    right: 24px;
+    left: 24px;
+  }
+}
+

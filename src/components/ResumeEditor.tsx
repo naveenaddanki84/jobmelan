@@ -220,12 +220,20 @@ export const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumeData, setResum
   const [draggedSection, setDraggedSection] = useState<string | null>(null);
   const [draggedItem, setDraggedItem] = useState<DragItemState | null>(null);
 
-  // Initial Analysis
+  // Initial Analysis - Run when job description or resume data changes
   useEffect(() => {
-    if (jobDescription && resumeData.basics.name && !analysis) {
-      runAnalysis();
+    if (jobDescription && resumeData.basics.name) {
+      // Only run if we don't have analysis yet, or if job description changed significantly
+      // Check if job description changed by comparing first 100 chars (simple heuristic)
+      const jobDescHash = jobDescription.slice(0, 100);
+      const lastJobDescHash = sessionStorage.getItem('lastJobDescHash');
+      
+      if (!analysis || lastJobDescHash !== jobDescHash) {
+        sessionStorage.setItem('lastJobDescHash', jobDescHash);
+        runAnalysis();
+      }
     }
-  }, []); // Run once on mount if data exists
+  }, [jobDescription, resumeData.basics.name]); // Re-run when job description or resume name changes
 
   const runAnalysis = async (forceExtract = false) => {
     setIsAnalyzing(true);
@@ -253,6 +261,13 @@ export const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumeData, setResum
       }
     } catch (e) {
       console.error("Analysis failed", e);
+      // Show error to user with fallback analysis
+      setAnalysis({
+        score: 0,
+        matchedKeywords: [],
+        missingKeywords: [],
+        reasoning: `Analysis failed: ${e instanceof Error ? e.message : 'Unknown error'}. Please check your API key and try again.`
+      });
     } finally {
       setIsAnalyzing(false);
     }

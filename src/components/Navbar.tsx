@@ -10,7 +10,7 @@ import { Button } from './Button';
 export const Navbar: React.FC = () => {
   const pathname = usePathname();
   const { isSignedIn, isLoaded } = useUser();
-  
+
   const isActive = (path: string) => {
     if (path === '/') return pathname === '/';
     return pathname?.startsWith(path);
@@ -41,7 +41,7 @@ export const Navbar: React.FC = () => {
                 </span>
               </div>
             </Link>
-            
+
             {/* SaaS Nav Items - Only show when signed in */}
             {isLoaded && isSignedIn && (
               <div className="hidden md:flex items-center gap-6 ml-6 text-sm font-medium text-stone-500">
@@ -62,6 +62,21 @@ export const Navbar: React.FC = () => {
                   className={`hover:text-brand-600 cursor-pointer transition-colors flex items-center gap-2 ${isActive('/') ? 'text-brand-600 font-bold' : ''}`}
                 >
                   <FileText className="w-4 h-4" /> Editor
+                </Link>
+                <Link
+                  href="/documents"
+                  className={`hover:text-brand-600 cursor-pointer transition-colors flex items-center gap-2 ${isActive('/documents') ? 'text-brand-600 font-bold' : ''}`}
+                >
+                  <FileText className="w-4 h-4" /> Documents
+                </Link>
+                <Link
+                  href="/profile"
+                  className={`hover:text-brand-600 cursor-pointer transition-colors flex items-center gap-2 ${isActive('/profile') ? 'text-brand-600 font-bold' : ''}`}
+                >
+                  <div className="w-4 h-4 rounded-full bg-stone-200 flex items-center justify-center overflow-hidden">
+                    <UserButton />
+                  </div>
+                  Profile
                 </Link>
               </div>
             )}
@@ -87,7 +102,7 @@ export const Navbar: React.FC = () => {
                         Upgrade
                       </Button>
                     </Link>
-                    <UserButton 
+                    <UserButton
                       appearance={{
                         elements: {
                           avatarBox: "w-8 h-8",

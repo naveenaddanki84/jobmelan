@@ -17,9 +17,13 @@ model User {
   clerkPlanId     String?  // Clerk plan ID (e.g., "pro", "premium")
   subscriptionId String?  // Clerk subscription ID
   createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  resumes         Resume[]
-  jobs            JobApplication[]
+  updatedAt           DateTime @updatedAt
+  onboardingCompleted Boolean  @default(false)
+  profileCompleted    Boolean  @default(false)
+  resumes             Resume[]
+  jobs                JobApplication[]
+  equalEmployment     Json?    // Stores EEOC data (gender, veteran status, etc.)
+  profileContent      Json?    // Decoupled profile data (Basics, Education, Experience, Skills)
 }
 
 model Resume {
@@ -28,20 +32,29 @@ model Resume {
   title     String   @default("My Resume")
   content   Json     // Stores your entire ResumeSchema JSON here
   score     Int?
+  isDefault Boolean  @default(false)
+  source    String   @default("User") // "User" or "Extension"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model JobApplication {
-  id        String   @id @default(cuid())
-  userId    String
-  company   String
-  position  String
-  status    String   // 'wishlist', 'applied', 'interview', 'offer', 'rejected'
-  salary    String?
-  url       String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id               String   @id @default(cuid())
+  userId           String
+  company          String
+  position         String
+  status           String   // 'wishlist', 'applied', 'interview', 'offer', 'rejected'
+  salary           String?
+  url              String?
+  
+  // Extension & Tailoring Fields
+  tailoredResumeId String?  // ID of the specific resume tailored for this job
+  coverLetter      String?  @db.Text // Generated cover letter content
+  jobDescription   String?  @db.Text // Full job description text
+  source           String?  // e.g. "LinkedIn", "Indeed"
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

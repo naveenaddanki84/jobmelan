@@ -9,7 +9,7 @@ interface ResumePreviewProps {
 }
 
 // Styles for Jake's Resume Format
-const JakesResumeRenderer: React.FC<{ data: ResumeSchema }> = ({ data }) => {
+export const JakesResumeRenderer: React.FC<{ data: ResumeSchema }> = ({ data }) => {
   const { basics, education, skills, experience, projects, certifications, meta } = data;
   const visible = meta?.visible || { education: true, experience: true, skills: true, projects: true, certifications: true, phone: true, location: true };
   const sectionOrder = meta?.sectionOrder || ['education', 'skills', 'experience', 'projects', 'certifications'];
@@ -103,14 +103,14 @@ const JakesResumeRenderer: React.FC<{ data: ResumeSchema }> = ({ data }) => {
                   <div className="flex-1 flex items-baseline">
                     <span className="resume-item-title">{project.name}</span>
                     {project.technologies && project.technologies.length > 0 && (
-                       <span className="font-normal text-gray-700 mx-2 text-xs italic">| {project.technologies.join(', ')}</span>
+                      <span className="font-normal text-gray-700 mx-2 text-xs italic">| {project.technologies.join(', ')}</span>
                     )}
                     {/* Display Project Link in header for better visibility */}
                     {project.link && (
-                       <a href={project.link} target="_blank" rel="noopener noreferrer" className="ml-1 text-[10px] text-gray-500 hover:text-black hover:underline decoration-dotted inline-flex items-center">
-                         <LinkIcon className="w-2.5 h-2.5 mr-0.5 opacity-70" /> 
-                         {project.link.replace(/^https?:\/\/(www\.)?/, '').split('/')[0] + (project.link.split('/').length > 3 ? '/...' : '')}
-                       </a>
+                      <a href={project.link} target="_blank" rel="noopener noreferrer" className="ml-1 text-[10px] text-gray-500 hover:text-black hover:underline decoration-dotted inline-flex items-center">
+                        <LinkIcon className="w-2.5 h-2.5 mr-0.5 opacity-70" />
+                        {project.link.replace(/^https?:\/\/(www\.)?/, '').split('/')[0] + (project.link.split('/').length > 3 ? '/...' : '')}
+                      </a>
                     )}
                   </div>
                   {project.date && <div className="resume-item-date">{project.date}</div>}
@@ -132,17 +132,17 @@ const JakesResumeRenderer: React.FC<{ data: ResumeSchema }> = ({ data }) => {
             <h2 className="resume-section-header">Certifications</h2>
             {visibleCerts.map((cert, index) => (
               <div key={cert.id || index} className="mb-1 flex justify-between items-baseline">
-                 <div className="text-xs">
-                   <span className="font-bold">{cert.name}</span>
-                   <span className="italic mx-1">-</span>
-                   <span>{cert.issuer}</span>
-                 </div>
-                 <div className="resume-item-date text-xs">{cert.date}</div>
+                <div className="text-xs">
+                  <span className="font-bold">{cert.name}</span>
+                  <span className="italic mx-1">-</span>
+                  <span>{cert.issuer}</span>
+                </div>
+                <div className="resume-item-date text-xs">{cert.date}</div>
               </div>
             ))}
           </section>
         );
-      
+
       default:
         return null;
     }
@@ -205,17 +205,17 @@ const JakesResumeRenderer: React.FC<{ data: ResumeSchema }> = ({ data }) => {
           {visible.location && basics.location && <span>{basics.location}</span>}
           {basics.profiles && basics.profiles.map((profile, i) => (
             <a key={i} href={profile.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
-              {profile.displayUrl 
-                ? profile.url.replace(/^https?:\/\//, '') 
+              {profile.displayUrl
+                ? profile.url.replace(/^https?:\/\//, '')
                 : (profile.network || profile.url.replace(/^https?:\/\//, ''))}
             </a>
           ))}
         </div>
         {/* Summary (if enabled and present) */}
         {visible.summary && basics.summary && (
-           <div className="text-xs text-left mt-2 mb-1 leading-relaxed">
-              {basics.summary}
-           </div>
+          <div className="text-xs text-left mt-2 mb-1 leading-relaxed">
+            {basics.summary}
+          </div>
         )}
       </header>
 
@@ -257,7 +257,7 @@ export const ResumePreview: React.FC<ResumePreviewProps> = ({ resumeData }) => {
       // Add a style tag to convert lab() colors to rgb for html2canvas compatibility
       const styleId = 'pdf-color-override';
       let overrideStyle = document.getElementById(styleId);
-      
+
       if (!overrideStyle) {
         overrideStyle = document.createElement('style');
         overrideStyle.id = styleId;
@@ -292,13 +292,13 @@ export const ResumePreview: React.FC<ResumePreviewProps> = ({ resumeData }) => {
 
       // Dynamically import html2pdf.js
       const html2pdf = (await import('html2pdf.js')).default;
-      
+
       const opt: any = {
-        margin: 0, 
+        margin: 0,
         filename: `${resumeData.basics.name.replace(/\s+/g, '_')}_Resume.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { 
-          scale: 2, 
+        html2canvas: {
+          scale: 2,
           useCORS: true,
           logging: false,
           allowTaint: true,
@@ -308,7 +308,7 @@ export const ResumePreview: React.FC<ResumePreviewProps> = ({ resumeData }) => {
       };
 
       await html2pdf().set(opt).from(element).save();
-      
+
       // Remove override style after PDF generation
       setTimeout(() => {
         const style = document.getElementById(styleId);
@@ -348,22 +348,20 @@ export const ResumePreview: React.FC<ResumePreviewProps> = ({ resumeData }) => {
           <div className="flex bg-stone-100 rounded-lg p-1">
             <button
               onClick={() => setActiveTab('preview')}
-              className={`flex items-center px-3 py-1.5 rounded-md text-sm font-bold transition-all ${
-                activeTab === 'preview' 
-                  ? 'bg-white text-brand-700 shadow-sm' 
+              className={`flex items-center px-3 py-1.5 rounded-md text-sm font-bold transition-all ${activeTab === 'preview'
+                  ? 'bg-white text-brand-700 shadow-sm'
                   : 'text-stone-500 hover:text-stone-700'
-              }`}
+                }`}
             >
               <Eye className="w-4 h-4 mr-2" />
               Preview
             </button>
             <button
               onClick={() => setActiveTab('json')}
-              className={`flex items-center px-3 py-1.5 rounded-md text-sm font-bold transition-all ${
-                activeTab === 'json' 
-                  ? 'bg-white text-brand-700 shadow-sm' 
+              className={`flex items-center px-3 py-1.5 rounded-md text-sm font-bold transition-all ${activeTab === 'json'
+                  ? 'bg-white text-brand-700 shadow-sm'
                   : 'text-stone-500 hover:text-stone-700'
-              }`}
+                }`}
             >
               <FileJson className="w-4 h-4 mr-2" />
               JSON
@@ -374,7 +372,7 @@ export const ResumePreview: React.FC<ResumePreviewProps> = ({ resumeData }) => {
         <div className="flex items-center space-x-2">
           {activeTab === 'json' ? (
             <>
-               <Button variant="ghost" size="sm" onClick={handleCopy} title="Copy JSON">
+              <Button variant="ghost" size="sm" onClick={handleCopy} title="Copy JSON">
                 {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
               </Button>
               <Button variant="secondary" size="sm" onClick={handleDownloadJSON} icon={<Download className="w-4 h-4" />}>
@@ -392,17 +390,17 @@ export const ResumePreview: React.FC<ResumePreviewProps> = ({ resumeData }) => {
       {/* Content Scroll Area */}
       <div className="flex-1 overflow-auto custom-scrollbar bg-stone-200/30">
         <div className="h-full w-full overflow-auto p-8 flex justify-center">
-           {activeTab === 'preview' ? (
-              <div className="bg-white shadow-xl w-[21cm] min-h-[29.7cm] text-slate-900 origin-top scale-90 sm:scale-100 transition-transform ring-1 ring-stone-900/5">
-                 <JakesResumeRenderer data={resumeData} />
-              </div>
-           ) : (
-              <div className="w-full max-w-4xl">
-                <pre className="text-sm text-stone-700 font-mono bg-white p-6 rounded-xl overflow-auto shadow-sm border border-stone-200">
-                  <code>{JSON.stringify(resumeData, null, 2)}</code>
-                </pre>
-              </div>
-           )}
+          {activeTab === 'preview' ? (
+            <div className="bg-white shadow-xl w-[21cm] min-h-[29.7cm] text-slate-900 origin-top scale-90 sm:scale-100 transition-transform ring-1 ring-stone-900/5">
+              <JakesResumeRenderer data={resumeData} />
+            </div>
+          ) : (
+            <div className="w-full max-w-4xl">
+              <pre className="text-sm text-stone-700 font-mono bg-white p-6 rounded-xl overflow-auto shadow-sm border border-stone-200">
+                <code>{JSON.stringify(resumeData, null, 2)}</code>
+              </pre>
+            </div>
+          )}
         </div>
       </div>
     </div>

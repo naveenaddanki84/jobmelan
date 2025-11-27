@@ -20,13 +20,69 @@ export default function EditorPage() {
   const [isCoverLetterOpen, setIsCoverLetterOpen] = useState(false);
 
   useEffect(() => {
+    // Check for job description in URL query params (from extension)
+    const urlParams = new URLSearchParams(window.location.search);
+    const jobDescParam = urlParams.get('jobDesc');
+    const jobDescKey = urlParams.get('jobDescKey'); // New approach: storage key
+    
     // Load resume data from database
     const loadResume = async () => {
       try {
         const resume = await getResumeById(resumeId);
         setResumeData(resume.content);
-        // Note: Job description would ideally be stored with the resume or passed as query param
-        // For now, keeping the placeholder
+        
+        // Priority 1: Check for storage key (from extension)
+        if (jobDescKey) {
+          try {
+            const storedDesc = sessionStorage.getItem(jobDescKey) || localStorage.getItem(`jobDesc_${resumeId}`);
+            if (storedDesc) {
+              setJobDesc(storedDesc);
+              localStorage.setItem(`jobDesc_${resumeId}`, storedDesc);
+              // Clean up sessionStorage entry
+              sessionStorage.removeItem(jobDescKey);
+              return;
+            }
+          } catch (e) {
+            console.error('Failed to read job description from storage:', e);
+          }
+        }
+        
+        // Priority 2: Check for direct URL param (backward compatibility)
+        if (jobDescParam) {
+          try {
+            // Use a safer decoding approach
+            let decoded: string;
+            try {
+              // Try standard decoding first
+              decoded = decodeURIComponent(jobDescParam);
+            } catch (e) {
+              // If that fails, try replacing + with spaces and decode again
+              try {
+                decoded = decodeURIComponent(jobDescParam.replace(/\+/g, ' '));
+              } catch (e2) {
+                // If still fails, use the param as-is (might already be decoded)
+                decoded = jobDescParam;
+              }
+            }
+            
+            setJobDesc(decoded);
+            // Also save to localStorage for persistence
+            localStorage.setItem(`jobDesc_${resumeId}`, decoded);
+          } catch (e) {
+            console.error('Failed to decode job description from URL:', e);
+            // Fallback to localStorage
+            const savedJobDesc = localStorage.getItem(`jobDesc_${resumeId}`);
+            if (savedJobDesc) {
+              setJobDesc(savedJobDesc);
+            }
+          }
+        } else {
+          // Priority 3: Check localStorage
+          const savedJobDesc = localStorage.getItem(`jobDesc_${resumeId}`);
+          if (savedJobDesc) {
+            setJobDesc(savedJobDesc);
+          }
+        }
       } catch (error) {
         console.error("Failed to load resume:", error);
         // Fallback to localStorage for backward compatibility during migration

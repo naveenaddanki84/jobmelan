@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from './Button';
-import { generateInterviewQuestions } from '@/actions/ai-actions';
+import { startMockInterview, processInterviewAnswer, InterviewFeedback } from '@/actions/interview-actions';
 import { ResumeSchema } from '@/types';
-import { X, MessageSquare, Lightbulb, RefreshCcw, Briefcase } from 'lucide-react';
+import { X, Send, User, Bot, ThumbsUp, AlertCircle, RefreshCcw, Briefcase } from 'lucide-react';
 import { UpgradePrompt } from './UpgradePrompt';
+import { cn } from '@/lib/utils';
 
 interface InterviewModalProps {
   isOpen: boolean;
@@ -14,50 +15,124 @@ interface InterviewModalProps {
   jobDescription: string;
 }
 
+interface Message {
+  id: string;
+  role: 'user' | 'ai';
+  content: string;
+  feedback?: InterviewFeedback;
+}
+
 export const InterviewModal: React.FC<InterviewModalProps> = ({
   isOpen,
   onClose,
   resumeData,
   jobDescription
 }) => {
-  const [questions, setQuestions] = useState<Array<{ question: string; type: string; tip: string }>>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
+  const [interviewStarted, setInterviewStarted] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Reset state when opened
+  // Auto-scroll to bottom
   useEffect(() => {
-    if (isOpen && questions.length === 0) {
-      handleGenerate();
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Start interview when opened
+  useEffect(() => {
+    if (isOpen && !interviewStarted) {
+      handleStartInterview();
     }
   }, [isOpen]);
 
-  const handleGenerate = async () => {
+  const handleStartInterview = async () => {
     setLoading(true);
     setError(null);
-    setShowUpgradePrompt(false);
+    setInterviewStarted(true);
+    setMessages([]);
+
     try {
-      // Create a simplified context string from resume
       const context = `
         Role: ${resumeData.basics.name}
         Skills: ${resumeData.skills.map(s => s.keywords.join(', ')).join('; ')}
         Experience: ${resumeData.experience.map(e => `${e.position} at ${e.company}`).join('; ')}
       `;
-      
-      const results = await generateInterviewQuestions(jobDescription, context);
-      setQuestions(results);
+
+      const response = await startMockInterview(jobDescription, context);
+
+      setMessages([
+        {
+          id: 'welcome',
+          role: 'ai',
+          content: response.message
+        }
+      ]);
     } catch (e: any) {
-      // Check for subscription required error
-      const errorMessage = e?.message || String(e);
-      if (errorMessage.includes("PRO_SUBSCRIPTION_REQUIRED") || errorMessage === "PRO_SUBSCRIPTION_REQUIRED") {
-        setShowUpgradePrompt(true);
-        setLoading(false);
-        return; // Don't show generic error, upgrade prompt handles it
-      }
-      console.error("Interview prep error:", e);
-      setError("Failed to generate questions. Please try again.");
+      handleError(e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!inputValue.trim() || loading) return;
+
+    const userMessage = inputValue.trim();
+    setInputValue('');
+
+    // Add user message immediately
+    const newMessages = [
+      ...messages,
+      { id: Date.now().toString(), role: 'user' as const, content: userMessage }
+    ];
+    setMessages(newMessages);
+    setLoading(true);
+
+    try {
+      // Get the last AI question
+      const lastAiMessage = messages.filter(m => m.role === 'ai').pop();
+      const currentQuestion = lastAiMessage ? lastAiMessage.content : "Tell me about yourself.";
+
+      const context = `
+        Role: ${resumeData.basics.name}
+        Skills: ${resumeData.skills.map(s => s.keywords.join(', ')).join('; ')}
+      `;
+
+      const response = await processInterviewAnswer(
+        currentQuestion,
+        userMessage,
+        jobDescription,
+        context
+      );
+
+      // Add AI response with feedback
+      setMessages(prev => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          role: 'ai',
+          content: response.message,
+          feedback: response.feedback
+        }
+      ]);
+
+    } catch (e: any) {
+      handleError(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleError = (e: any) => {
+    const errorMessage = e?.message || String(e);
+    if (errorMessage.includes("PRO_SUBSCRIPTION_REQUIRED") || errorMessage === "PRO_SUBSCRIPTION_REQUIRED") {
+      setShowUpgradePrompt(true);
+    } else {
+      console.error("Interview error:", e);
+      setError("Failed to connect to AI interviewer. Please try again.");
     }
   };
 
@@ -65,82 +140,135 @@ export const InterviewModal: React.FC<InterviewModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white border border-stone-200 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
-        
+      <div className="bg-white border border-stone-200 rounded-2xl shadow-2xl w-full max-w-3xl h-[85vh] flex flex-col overflow-hidden">
+
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-stone-100 bg-gradient-to-r from-brand-50 to-white">
+        <div className="flex items-center justify-between p-4 border-b border-stone-100 bg-gradient-to-r from-brand-50 to-white shrink-0">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-brand-100 rounded-xl text-brand-700 shadow-sm">
-              <Briefcase className="w-6 h-6" />
+            <div className="p-2 bg-brand-100 rounded-lg text-brand-700">
+              <Briefcase className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-stone-900 font-display">Interview Prep</h2>
-              <p className="text-xs text-stone-500">AI-Generated Questions based on your tailored resume.</p>
+              <h2 className="text-lg font-bold text-stone-900 font-display">Mock Interview</h2>
+              <p className="text-xs text-stone-500">Interactive AI Interviewer</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-stone-400 hover:text-stone-600 transition-colors p-1 rounded-full hover:bg-stone-100">
-            <X className="w-6 h-6" />
-          </button>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={handleStartInterview} title="Restart Interview">
+              <RefreshCcw className="w-4 h-4" />
+            </Button>
+            <button onClick={onClose} className="text-stone-400 hover:text-stone-600 p-1 rounded-full hover:bg-stone-100">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 bg-stone-50/30 custom-scrollbar">
-          {loading && !showUpgradePrompt ? (
-            <div className="flex flex-col items-center justify-center h-64 space-y-4">
-               <RefreshCcw className="w-10 h-10 text-brand-500 animate-spin" />
-               <p className="text-stone-500 font-medium">Analyzing your resume & job description...</p>
-            </div>
-          ) : showUpgradePrompt ? (
-            <div className="flex flex-col items-center justify-center h-64 space-y-4 text-center">
-              <p className="text-stone-600">Upgrade to Pro to unlock Interview Prep</p>
-            </div>
-          ) : error ? (
-            <div className="text-center p-8 text-red-500 bg-red-50 rounded-xl border border-red-100">
-               {error}
-               <Button variant="secondary" size="sm" onClick={handleGenerate} className="mt-4">Try Again</Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-               {questions.map((q, idx) => (
-                 <div key={idx} className="bg-white p-5 rounded-xl border border-stone-200 shadow-sm hover:shadow-md transition-shadow group">
-                    <div className="flex items-start justify-between gap-4 mb-2">
-                       <span className="px-2 py-1 bg-brand-50 text-brand-700 text-[10px] font-bold uppercase tracking-wider rounded border border-brand-100">
-                         {q.type}
-                       </span>
-                    </div>
-                    <h3 className="text-stone-900 font-bold mb-3 flex items-start gap-2">
-                       <MessageSquare className="w-5 h-5 text-stone-400 mt-0.5 shrink-0" />
-                       {q.question}
-                    </h3>
-                    <div className="bg-stone-50 p-3 rounded-lg border border-stone-100 text-sm text-stone-600 flex items-start gap-2">
-                       <Lightbulb className="w-4 h-4 text-yellow-500 mt-0.5 shrink-0" />
-                       <span><span className="font-bold text-stone-700">Target Answer:</span> {q.tip}</span>
-                    </div>
-                 </div>
-               ))}
+        {/* Chat Area */}
+        <div className="flex-1 overflow-y-auto p-4 bg-stone-50 space-y-6 custom-scrollbar">
+          {messages.length === 0 && loading && (
+            <div className="flex flex-col items-center justify-center h-full text-stone-400 space-y-2">
+              <Bot className="w-8 h-8 animate-bounce" />
+              <p className="text-sm">Preparing your interview...</p>
             </div>
           )}
+
+          {messages.map((msg, idx) => (
+            <div key={msg.id} className={cn("flex flex-col max-w-[85%]", msg.role === 'user' ? "self-end items-end" : "self-start items-start")}>
+
+              {/* Message Bubble */}
+              <div className={cn(
+                "p-4 rounded-2xl shadow-sm text-sm leading-relaxed relative",
+                msg.role === 'user'
+                  ? "bg-brand-600 text-white rounded-tr-none"
+                  : "bg-white border border-stone-200 text-stone-700 rounded-tl-none"
+              )}>
+                {/* Avatar Icon */}
+                <div className={cn(
+                  "absolute -top-3 w-6 h-6 rounded-full flex items-center justify-center border shadow-sm text-xs",
+                  msg.role === 'user'
+                    ? "bg-brand-700 border-brand-500 text-white -right-2"
+                    : "bg-white border-stone-200 text-brand-600 -left-2"
+                )}>
+                  {msg.role === 'user' ? <User className="w-3 h-3" /> : <Bot className="w-3 h-3" />}
+                </div>
+
+                {msg.content}
+              </div>
+
+              {/* Feedback Block (Only for AI messages that have feedback on the PREVIOUS user answer) */}
+              {msg.role === 'ai' && msg.feedback && (
+                <div className="mt-3 ml-2 p-4 bg-indigo-50 border border-indigo-100 rounded-xl w-full text-sm animate-in slide-in-from-top-2">
+                  <div className="flex items-center gap-2 mb-2 text-indigo-700 font-semibold">
+                    <ThumbsUp className="w-4 h-4" />
+                    <span>Feedback on your answer</span>
+                    <span className="ml-auto bg-white px-2 py-0.5 rounded-full text-xs border border-indigo-200">
+                      Score: {msg.feedback.rating}/10
+                    </span>
+                  </div>
+                  <p className="text-stone-600 mb-3">{msg.feedback.feedback}</p>
+
+                  <div className="bg-white/60 p-3 rounded-lg border border-indigo-100/50">
+                    <p className="text-xs font-bold text-indigo-600 mb-1">Better Answer Example:</p>
+                    <p className="text-xs text-stone-600 italic">"{msg.feedback.betterAnswer}"</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+
+          {loading && messages.length > 0 && (
+            <div className="self-start flex items-center gap-2 text-stone-400 text-xs ml-2">
+              <Bot className="w-4 h-4" />
+              <span className="animate-pulse">AI is thinking...</span>
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
         </div>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-stone-200 bg-white flex justify-between items-center">
-           <span className="text-xs text-stone-400 italic hidden sm:block">Questions are tailored to your specific resume gaps and strengths.</span>
-           <div className="flex gap-3">
-             <Button variant="secondary" onClick={handleGenerate} disabled={loading} icon={<RefreshCcw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />}>
-               Regenerate
-             </Button>
-             <Button variant="primary" onClick={onClose}>Done</Button>
-           </div>
+        {/* Input Area */}
+        <div className="p-4 bg-white border-t border-stone-200 shrink-0">
+          {error && (
+            <div className="mb-3 p-2 bg-red-50 text-red-600 text-xs rounded flex items-center gap-2">
+              <AlertCircle className="w-4 h-4" />
+              {error}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <textarea
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
+              placeholder="Type your answer here..."
+              className="flex-1 resize-none border border-stone-300 rounded-xl p-3 focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none text-sm min-h-[50px] max-h-[120px]"
+              disabled={loading}
+            />
+            <Button
+              onClick={handleSendMessage}
+              disabled={!inputValue.trim() || loading}
+              className="h-auto px-4 rounded-xl"
+            >
+              <Send className="w-5 h-5" />
+            </Button>
+          </div>
+          <p className="text-[10px] text-stone-400 mt-2 text-center">
+            Press Enter to send. AI will provide instant feedback on your answer.
+          </p>
         </div>
 
       </div>
-      
-      <UpgradePrompt 
+
+      <UpgradePrompt
         isOpen={showUpgradePrompt}
         onClose={() => setShowUpgradePrompt(false)}
-        feature="Interview Prep"
+        feature="Interactive Mock Interview"
       />
     </div>
   );
 };
-

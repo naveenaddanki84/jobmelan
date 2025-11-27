@@ -43,15 +43,15 @@ export const fetchJobDescriptionFromUrl = async (url: string): Promise<{ text: s
         tools: [{ googleSearch: {} }],
       },
     });
-    
+
     const text = response.text;
-    
-    if (!text || 
-        text.includes("FETCH_FAILED") || 
-        text.length < 100 
-       ) {
-        console.warn("Model response indicated failure:", text);
-        throw new Error("Model unable to scrape content");
+
+    if (!text ||
+      text.includes("FETCH_FAILED") ||
+      text.length < 100
+    ) {
+      console.warn("Model response indicated failure:", text);
+      throw new Error("Model unable to scrape content");
     }
 
     const source = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.[0]?.web?.uri;
@@ -143,12 +143,12 @@ export const parseResumeToJSON = async (text: string): Promise<ResumeSchema> => 
       certifications: {
         type: Type.ARRAY,
         items: {
-           type: Type.OBJECT,
-           properties: {
-             name: { type: Type.STRING },
-             issuer: { type: Type.STRING },
-             date: { type: Type.STRING },
-           }
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING },
+            issuer: { type: Type.STRING },
+            date: { type: Type.STRING },
+          }
         }
       }
     },
@@ -169,7 +169,7 @@ export const parseResumeToJSON = async (text: string): Promise<ResumeSchema> => 
   });
 
   const rawData = JSON.parse(response.text || "{}");
-  
+
   const data: ResumeSchema = {
     meta: {
       sectionOrder: ['experience', 'education', 'projects', 'skills', 'certifications'],
@@ -183,12 +183,12 @@ export const parseResumeToJSON = async (text: string): Promise<ResumeSchema> => 
         location: true,
       }
     },
-    basics: { 
-      name: rawData.basics?.name || "", 
-      email: rawData.basics?.email || "", 
-      phone: rawData.basics?.phone || "", 
-      location: rawData.basics?.location || "", 
-      profiles: rawData.basics?.profiles || [] 
+    basics: {
+      name: rawData.basics?.name || "",
+      email: rawData.basics?.email || "",
+      phone: rawData.basics?.phone || "",
+      location: rawData.basics?.location || "",
+      profiles: rawData.basics?.profiles || []
     },
     skills: rawData.skills || [],
     experience: rawData.experience?.map((e: any) => ({ ...e, id: randomUUID(), visible: true })) || [],
@@ -271,14 +271,14 @@ export const analyzeResumeAgainstJob = async (resume: ResumeSchema, jobDesc: str
 };
 
 export const suggestBulletPoint = async (
-  bullet: string, 
-  context: string, 
+  bullet: string,
+  context: string,
   jobDesc: string,
   keywordsToInclude: string[] = [],
   customInstruction: string = ""
 ): Promise<string> => {
-  
-  const keywordInstruction = keywordsToInclude.length > 0 
+
+  const keywordInstruction = keywordsToInclude.length > 0
     ? `IMPORTANT: You MUST naturally include these exact keywords in the response: ${keywordsToInclude.join(', ')}.`
     : `Ensure the tone is professional and impact-driven.`;
 
@@ -304,7 +304,7 @@ export const suggestBulletPoint = async (
 
   let cleanText = response.text?.trim() || bullet;
   cleanText = cleanText.replace(/\*\*/g, '').replace(/\*/g, '');
-  
+
   return cleanText;
 };
 
@@ -316,7 +316,7 @@ export const rewriteWholeSection = async (
 ): Promise<string[]> => {
   // Require pro subscription for section rewriting
   await requireProSubscription();
-  
+
   const schema = {
     type: Type.OBJECT,
     properties: {
@@ -350,7 +350,7 @@ export const rewriteWholeSection = async (
   const result = JSON.parse(response.text || "{}");
   let finalBullets = result.rewrittenBullets || bullets;
   finalBullets = finalBullets.map((b: string) => b.replace(/\*\*/g, '').replace(/\*/g, ''));
-  
+
   return finalBullets;
 };
 
@@ -360,7 +360,7 @@ export const optimizeSkillsSection = async (
 ): Promise<{ category: string; keywords: string[] }[]> => {
   // Require pro subscription for skills optimization
   await requireProSubscription();
-  
+
   if (keywordsToAdd.length === 0) return currentSkills;
 
   const schema = {
@@ -408,7 +408,7 @@ export const generateSummarySection = async (
 ): Promise<string> => {
   // Require pro subscription for summary generation
   await requireProSubscription();
-  
+
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
     contents: `Write a professional resume summary (Professional Summary) for a candidate applying to this job.
@@ -423,7 +423,7 @@ export const generateSummarySection = async (
     3. Highlight relevant experience inferred from the job description requirements.
     4. Plain text only (no markdown).`,
   });
-  
+
   return response.text?.trim() || "";
 };
 
@@ -433,7 +433,7 @@ export const generateInterviewQuestions = async (
 ): Promise<Array<{ question: string; type: string; tip: string }>> => {
   // Require pro subscription for interview prep
   await requireProSubscription();
-  
+
   const schema = {
     type: Type.OBJECT,
     properties: {
@@ -480,7 +480,7 @@ export const generateCoverLetter = async (
 ): Promise<string> => {
   // Require pro subscription for cover letter generation
   await requireProSubscription();
-  
+
   const context = `
     Candidate Name: ${resumeData.basics.name}
     Current Title: ${resumeData.experience[0]?.position || "Professional"} at ${resumeData.experience[0]?.company || ""}
@@ -510,3 +510,196 @@ export const generateCoverLetter = async (
   return response.text || "";
 };
 
+
+export const improveProfileBulletPoint = async (
+  bullet: string,
+  context: string
+): Promise<string> => {
+  // Require pro subscription for AI features
+  await requireProSubscription();
+
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: `Rewrite this resume bullet point to be more professional, impactful, and results-oriented.
+    
+    Context (Role/Company): ${context}
+    
+    Current Text: "${bullet}"
+    
+    Instructions:
+    1. Use active voice and strong action verbs.
+    2. Quantify results if possible (or suggest where to add numbers).
+    3. Improve clarity and conciseness.
+    4. Fix any grammar or spelling errors.
+    5. DO NOT use markdown formatting like bold (**text**) or italics. Return plain text only.
+    6. Return ONLY the rewritten text.`,
+  });
+
+  let cleanText = response.text?.trim() || bullet;
+  cleanText = cleanText.replace(/\*\*/g, '').replace(/\*/g, '');
+
+  return cleanText;
+};
+
+/**
+ * Rewrite a whole section (bulk rewrite) without JD - just improve the content
+ */
+export const rewriteWholeSectionStandalone = async (
+  bullets: string[],
+  context: string
+): Promise<string[]> => {
+  // Require pro subscription for section rewriting
+  await requireProSubscription();
+
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      rewrittenBullets: { type: Type.ARRAY, items: { type: Type.STRING } }
+    }
+  };
+
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: `Rewrite the following resume bullet points to be more impactful, professional, and ATS-friendly.
+    
+    Context (Role/Company): ${context}
+    
+    Current Bullets:
+    ${JSON.stringify(bullets)}
+    
+    Instructions:
+    1. Improve clarity, impact, and metrics - add quantifiable results where possible.
+    2. Use strong action verbs and active voice.
+    3. Maintain the same number of bullet points.
+    4. Make each bullet point more compelling and results-oriented.
+    5. Do not use markdown bolding (**).
+    6. Return JSON.`,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: schema
+    }
+  });
+
+  const result = JSON.parse(response.text || "{}");
+  let finalBullets = result.rewrittenBullets || bullets;
+  finalBullets = finalBullets.map((b: string) => b.replace(/\*\*/g, '').replace(/\*/g, ''));
+
+  return finalBullets;
+};
+
+/**
+ * Optimize skills section - reorganize and improve without specific keywords
+ */
+export const optimizeSkillsSectionStandalone = async (
+  currentSkills: { category: string; keywords: string[] }[]
+): Promise<{ category: string; keywords: string[] }[]> => {
+  // Require pro subscription for skills optimization
+  await requireProSubscription();
+
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      optimizedSkills: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            category: { type: Type.STRING },
+            keywords: { type: Type.ARRAY, items: { type: Type.STRING } }
+          }
+        }
+      }
+    }
+  };
+
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: `Optimize and reorganize this resume skills section for better ATS compatibility and clarity.
+    
+    Current Skills: ${JSON.stringify(currentSkills)}
+    
+    Instructions:
+    1. Group related skills into logical categories.
+    2. Remove duplicates and consolidate similar terms.
+    3. Use industry-standard category names (e.g., "Programming Languages", "Frameworks", "Tools", "Cloud Platforms").
+    4. Ensure keywords are relevant and professional.
+    5. Maintain all important skills - do not remove valuable skills.
+    6. Return the optimized skills list.`,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: schema
+    }
+  });
+
+  const result = JSON.parse(response.text || "{}");
+  return result.optimizedSkills || currentSkills;
+};
+
+/**
+ * Generate professional summary from resume content only
+ */
+export const generateSummaryStandalone = async (
+  resumeData: ResumeSchema
+): Promise<string> => {
+  // Require pro subscription for summary generation
+  await requireProSubscription();
+
+  const context = `
+    Name: ${resumeData.basics.name}
+    Current Role: ${resumeData.experience[0]?.position || ""} at ${resumeData.experience[0]?.company || ""}
+    Top Skills: ${resumeData.skills.map(s => s.keywords.join(', ')).join(', ').slice(0, 300)}
+    Key Achievements: ${resumeData.experience.slice(0, 2).map(e => e.highlights[0] || '').filter(Boolean).join('. ')}
+    Education: ${resumeData.education.map(e => `${e.studyType || ''} in ${e.area || ''} from ${e.institution || ''}`).join(', ')}
+  `;
+
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: `Write a professional resume summary (Professional Summary) based on this candidate's background.
+    
+    Resume Context: ${context}
+    
+    Instructions:
+    1. 3-4 sentences long.
+    2. Professional, confident tone.
+    3. Highlight key experience, skills, and achievements.
+    4. Make it compelling and tailored to their background.
+    5. Plain text only (no markdown).`,
+  });
+
+  return response.text?.trim() || "";
+};
+
+/**
+ * Suggest a new bullet point based on context (without JD)
+ */
+export const suggestBulletPointStandalone = async (
+  context: string,
+  existingBullets: string[] = []
+): Promise<string> => {
+  // Require pro subscription for AI features
+  await requireProSubscription();
+
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: `Suggest a new impactful resume bullet point for this role.
+    
+    Context (Role/Company): ${context}
+    
+    Existing Bullets (for reference, don't duplicate):
+    ${existingBullets.length > 0 ? JSON.stringify(existingBullets) : 'None yet'}
+    
+    Instructions:
+    1. Create a professional, results-oriented bullet point.
+    2. Use active voice and strong action verbs.
+    3. Include quantifiable results or metrics if relevant.
+    4. Make it unique and different from existing bullets.
+    5. Keep it concise (1-2 lines).
+    6. DO NOT use markdown formatting. Return plain text only.
+    7. Return ONLY the suggested bullet point text.`,
+  });
+
+  let cleanText = response.text?.trim() || "";
+  cleanText = cleanText.replace(/\*\*/g, '').replace(/\*/g, '');
+
+  return cleanText;
+};

@@ -25,12 +25,19 @@ export async function checkProSubscription(): Promise<boolean> {
       select: { isPro: true, clerkPlanId: true }
     });
 
-    // Verify user has pro access and plan ID matches
-    const hasPro = user?.isPro === true && user?.clerkPlanId === PRO_PLAN_ID;
+    // More lenient check: if isPro is true, grant access
+    // Also check if plan ID matches (strict check)
+    // This handles cases where webhook synced isPro but planId might be null or different
+    const hasPro = user?.isPro === true || (user?.clerkPlanId === PRO_PLAN_ID && user?.clerkPlanId !== null);
     
     // Debug logging (remove in production)
     if (process.env.NODE_ENV === 'development') {
       console.log(`[Subscription Check] User ${userId}: isPro=${user?.isPro}, planId=${user?.clerkPlanId}, expectedPlan=${PRO_PLAN_ID}, hasPro=${hasPro}`);
+      
+      // Warn if there's a mismatch
+      if (user?.isPro === true && user?.clerkPlanId !== PRO_PLAN_ID && user?.clerkPlanId !== null) {
+        console.warn(`[Subscription Warning] User ${userId} has isPro=true but planId (${user?.clerkPlanId}) doesn't match expected (${PRO_PLAN_ID})`);
+      }
     }
     
     return hasPro;
@@ -56,8 +63,11 @@ export async function getSubscriptionStatus() {
       select: { isPro: true, clerkPlanId: true, subscriptionId: true }
     });
 
+    // More lenient check: if isPro is true, grant access
+    const isPro = user?.isPro === true || (user?.clerkPlanId === PRO_PLAN_ID && user?.clerkPlanId !== null);
+    
     return {
-      isPro: user?.isPro === true && user?.clerkPlanId === PRO_PLAN_ID,
+      isPro,
       planId: user?.clerkPlanId || null,
       subscriptionId: user?.subscriptionId || null
     };
@@ -65,6 +75,14 @@ export async function getSubscriptionStatus() {
     console.error("Error getting subscription status:", error);
     return { isPro: false, planId: null, subscriptionId: null };
   }
+}
+
+/**
+ * Get document limit based on subscription status
+ */
+export async function getDocumentLimit(): Promise<number> {
+  const isPro = await checkProSubscription();
+  return isPro ? 5 : 2;
 }
 
 /**

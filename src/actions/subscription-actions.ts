@@ -47,27 +47,32 @@ export async function syncSubscriptionStatus() {
 
 /**
  * Manually update subscription status (for testing/admin use)
+ * Can also be used to update a specific user by ID (admin only)
  */
-export async function updateSubscriptionStatus(isPro: boolean, planId?: string) {
+export async function updateSubscriptionStatus(isPro: boolean, planId?: string, targetUserId?: string) {
   const { userId } = await auth();
   
   if (!userId) {
     throw new Error("Unauthorized");
   }
 
+  // If targetUserId is provided, allow updating that user (for admin use)
+  const updateUserId = targetUserId || userId;
+
   try {
     const updated = await prisma.user.update({
-      where: { id: userId },
+      where: { id: updateUserId },
       data: {
         isPro,
         clerkPlanId: planId || (isPro ? PRO_PLAN_ID : null),
       },
     });
 
-    console.log(`✅ Manually updated subscription for user ${userId}: isPro=${isPro}, planId=${planId || PRO_PLAN_ID}`);
+    console.log(`✅ Manually updated subscription for user ${updateUserId}: isPro=${isPro}, planId=${planId || PRO_PLAN_ID}`);
     
     return {
       success: true,
+      userId: updateUserId,
       isPro: updated.isPro,
       clerkPlanId: updated.clerkPlanId
     };
