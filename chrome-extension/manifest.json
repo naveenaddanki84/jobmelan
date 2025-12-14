@@ -51,7 +51,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["icon128.png"],
+      "resources": ["icon128.png", "lever-auto-apply.js"],
       "matches": ["<all_urls>"]
     }
   ]

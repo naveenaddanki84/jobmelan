@@ -189,5 +189,49 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     })();
     return true;
   }
+  
+  if (request.action === 'storeResumeFile') {
+    // Store resume file as base64 in Chrome storage
+    (async () => {
+      try {
+        const { resumeId, fileData, fileName, fileType } = request;
+        const storageKey = `resume_file_${resumeId}`;
+        
+        await chrome.storage.local.set({
+          [storageKey]: {
+            data: fileData, // base64 string
+            fileName: fileName || 'resume.pdf',
+            fileType: fileType || 'application/pdf',
+            timestamp: Date.now()
+          }
+        });
+        
+        sendResponse({ success: true, storageKey });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+  
+  if (request.action === 'getResumeFile') {
+    // Get resume file from Chrome storage
+    (async () => {
+      try {
+        const { resumeId } = request;
+        const storageKey = `resume_file_${resumeId}`;
+        const result = await chrome.storage.local.get([storageKey]);
+        
+        if (result[storageKey]) {
+          sendResponse({ success: true, fileData: result[storageKey] });
+        } else {
+          sendResponse({ success: false, error: 'File not found' });
+        }
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
 });
 
