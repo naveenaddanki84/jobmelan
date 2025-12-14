@@ -78,6 +78,12 @@ export const Navbar: React.FC = () => {
                   </div>
                   Profile
                 </Link>
+                <Link
+                  href="/mock-interview"
+                  className={`hover:text-brand-600 cursor-pointer transition-colors flex items-center gap-2 ${isActive('/mock-interview') ? 'text-brand-600 font-bold' : ''}`}
+                >
+                  <FileText className="w-4 h-4" /> Mock Interview
+                </Link>
               </div>
             )}
           </div>

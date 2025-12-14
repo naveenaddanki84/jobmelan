@@ -119,6 +119,7 @@ export interface JobApplication {
   salary?: string;
   notes?: string;
   nextActionDate?: string;
+  jobDescription?: string;
 }
 
 export interface CoverLetterOptions {

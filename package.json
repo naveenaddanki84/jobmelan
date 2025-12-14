@@ -2,21 +2,30 @@
   "name": "jobmelan-saas",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "agent:build": "node --loader ts-node/esm --no-warnings scripts/build-agent.mjs",
+    "agent:dev": "node --env-file=.env agents-worker/dist/run.js dev"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.35.3",
     "@google/genai": "^1.30.0",
+    "@livekit/agents": "^1.0.27",
+    "@livekit/components-react": "^2.9.17",
+    "@livekit/components-styles": "^1.2.0",
+    "@livekit/rtc-node": "^0.13.13",
     "@prisma/client": "^6.19.0",
     "clsx": "^2.1.1",
     "dotenv": "^17.2.3",
     "framer-motion": "^12.23.24",
     "html2pdf.js": "^0.12.1",
+    "livekit-client": "^2.16.1",
+    "livekit-server-sdk": "^2.15.0",
     "lucide-react": "^0.554.0",
     "mammoth": "^1.11.0",
     "next": "16.0.3",
@@ -25,17 +34,20 @@
     "react-dom": "19.2.0",
     "stripe": "^20.0.0",
     "svix": "^1.81.0",
-    "tailwind-merge": "^3.4.0"
+    "tailwind-merge": "^3.4.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "esbuild": "^0.25.12",
     "eslint": "^9",
     "eslint-config-next": "16.0.3",
     "prisma": "^6.19.0",
     "tailwindcss": "^4",
+    "ts-node": "^10.9.2",
     "typescript": "^5"
   }
 }

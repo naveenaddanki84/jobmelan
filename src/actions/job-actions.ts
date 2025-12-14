@@ -61,6 +61,16 @@ export async function getJobApplications(): Promise<JobApplication[]> {
     const jobs = await prisma.jobApplication.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        company: true,
+        position: true,
+        status: true,
+        salary: true,
+        url: true,
+        jobDescription: true,
+        createdAt: true,
+      },
     });
 
     return jobs.map(job => ({
@@ -73,6 +83,7 @@ export async function getJobApplications(): Promise<JobApplication[]> {
       dateAdded: job.createdAt.toISOString().split('T')[0],
       notes: undefined,
       nextActionDate: undefined,
+      jobDescription: job.jobDescription || undefined,
     }));
   } catch (error) {
     console.error("Error fetching job applications:", error);
