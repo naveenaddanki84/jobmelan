@@ -10,7 +10,7 @@ import {
   ControlBar,
 } from '@livekit/components-react';
 import '@livekit/components-styles';
-import { RoomEvent, ConnectionState } from 'livekit-client';
+import { RoomEvent, ConnectionState, DisconnectReason } from 'livekit-client';
 import { Button } from '@/components/Button';
 import { Navbar } from '@/components/Navbar';
 import { Mic, MicOff, Phone, X } from 'lucide-react';
@@ -24,6 +24,13 @@ type SessionResponse = {
   token: string;
   url: string;
   identity: string;
+};
+
+type FeedbackData = {
+  score: number;
+  summary: string;
+  strengths: string[];
+  improvements: string[];
 };
 
 type TranscriptLine = {
@@ -64,7 +71,7 @@ function RoomSetup({ onDataReceived }: { onDataReceived: (payload: Uint8Array) =
     enableMic();
 
     // Handle connection errors
-    const handleDisconnected = (reason?: string) => {
+    const handleDisconnected = (reason?: DisconnectReason) => {
       console.log('Room disconnected:', reason);
     };
 
@@ -112,14 +119,14 @@ function InterviewControls({ onEndInterview }: { onEndInterview: () => void }) {
       <div className="w-32 h-32 rounded-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center shadow-lg animate-pulse">
         <Mic className="w-12 h-12 text-white" />
       </div>
-      
+
       <div className="text-center">
         <p className="text-lg font-semibold text-stone-800">
           {connectionState === ConnectionState.Connected
             ? 'Interview in progress'
             : connectionState === ConnectionState.Connecting
-            ? 'Connecting...'
-            : 'Disconnected'}
+              ? 'Connecting...'
+              : 'Disconnected'}
         </p>
         <p className="text-sm text-stone-500 mt-1">
           {isMicrophoneEnabled ? 'Your microphone is on' : 'Your microphone is muted'}
@@ -129,11 +136,10 @@ function InterviewControls({ onEndInterview }: { onEndInterview: () => void }) {
       <div className="flex gap-4">
         <button
           onClick={toggleMic}
-          className={`p-4 rounded-full transition-colors ${
-            isMicrophoneEnabled
+          className={`p-4 rounded-full transition-colors ${isMicrophoneEnabled
               ? 'bg-stone-100 hover:bg-stone-200 text-stone-700'
               : 'bg-red-100 hover:bg-red-200 text-red-600'
-          }`}
+            }`}
           title={isMicrophoneEnabled ? 'Mute microphone' : 'Unmute microphone'}
         >
           {isMicrophoneEnabled ? <Mic className="w-6 h-6" /> : <MicOff className="w-6 h-6" />}
@@ -162,6 +168,7 @@ export default function MockInterviewPage() {
   const [selectedJobId, setSelectedJobId] = useState<string>('');
   const [pastedJobDescription, setPastedJobDescription] = useState<string>('');
   const [loadingJobs, setLoadingJobs] = useState(true);
+  const [feedback, setFeedback] = useState<FeedbackData | null>(null);
 
   const persistEvents = useCallback(
     async (events: Omit<TranscriptLine, 'id'>[]) => {
@@ -203,6 +210,12 @@ export default function MockInterviewPage() {
               stage: nextStage,
             },
           ]);
+        }
+
+        if (parsed?.type === 'feedback') {
+          setFeedback(parsed);
+          // Auto disconnect after receiving feedback if still connected
+          // room?.disconnect();
         }
 
         if (parsed?.type === 'transcript' && parsed.text) {
@@ -275,13 +288,17 @@ export default function MockInterviewPage() {
 
   const onDisconnected = useCallback(() => {
     setConnected(false);
-    setSession(null);
-    setTranscript([]);
-    setStage('selfIntro');
-  }, []);
+    // Don't clear session immediately if we have feedback to show
+    if (!feedback) {
+      setSession(null);
+      setTranscript([]);
+      setStage('selfIntro');
+    }
+  }, [feedback]);
 
   const handleEndInterview = useCallback(() => {
     setSession(null);
+    setFeedback(null); // Clear feedback on explicit exit
     setConnected(false);
     setTranscript([]);
     setStage('selfIntro');
@@ -401,7 +418,7 @@ export default function MockInterviewPage() {
                 <p className="text-sm font-medium">Personalize your interview (optional)</p>
                 <p className="text-xs mt-1 text-stone-400">Paste a job description or select from saved jobs</p>
               </div>
-              
+
               <div className="space-y-4">
                 {/* Paste JD Option */}
                 <div className="space-y-2">
@@ -447,7 +464,7 @@ export default function MockInterviewPage() {
                   <label className="block text-sm font-semibold text-stone-700">
                     Select from saved jobs:
                   </label>
-                  
+
                   {loadingJobs ? (
                     <div className="px-4 py-3 border border-stone-300 rounded-lg text-sm text-stone-500 bg-stone-50">
                       Loading saved jobs...
@@ -472,7 +489,7 @@ export default function MockInterviewPage() {
                           </option>
                         ))}
                       </select>
-                      
+
                       {selectedJobId && (
                         <div className="p-3 bg-brand-50 border border-brand-200 rounded-lg">
                           <div className="flex items-start justify-between">
@@ -504,10 +521,81 @@ export default function MockInterviewPage() {
                 </div>
               </div>
             </div>
-            
+
             <div className="bg-white border border-dashed border-stone-200 rounded-2xl p-10 text-center text-stone-500">
               <p className="text-sm mb-2">Ready to start?</p>
               <p className="text-xs text-stone-400">Click "Start Mock Interview" above to begin</p>
+            </div>
+          </div>
+        )}
+
+        {/* Feedback Modal Overlay */}
+        {feedback && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b border-stone-100 flex items-center justify-between sticky top-0 bg-white z-10">
+                <h2 className="text-xl font-bold text-stone-900">Interview Feedback</h2>
+                <button
+                  onClick={handleEndInterview}
+                  className="p-2 hover:bg-stone-100 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5 text-stone-500" />
+                </button>
+              </div>
+
+              <div className="p-8 space-y-8">
+                {/* Score */}
+                <div className="flex flex-col items-center justify-center">
+                  <div className="w-24 h-24 rounded-full flex items-center justify-center border-4 border-brand-100 bg-brand-50 text-brand-700 text-3xl font-bold">
+                    {feedback.score}
+                  </div>
+                  <p className="mt-2 text-sm font-semibold text-stone-500 uppercase tracking-wide">Overall Score</p>
+                </div>
+
+                {/* Summary */}
+                <div className="bg-stone-50 p-4 rounded-xl border border-stone-100">
+                  <h3 className="text-sm font-semibold text-stone-900 mb-2">Summary</h3>
+                  <p className="text-stone-700 leading-relaxed">{feedback.summary}</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Strengths */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-emerald-700 mb-3 flex items-center gap-2">
+                      Strengths
+                    </h3>
+                    <ul className="space-y-2">
+                      {feedback.strengths.map((s, i) => (
+                        <li key={i} className="flex gap-2 text-sm text-stone-700">
+                          <span className="text-emerald-500">✓</span>
+                          {s}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Improvements */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-amber-700 mb-3 flex items-center gap-2">
+                      Areas for Improvement
+                    </h3>
+                    <ul className="space-y-2">
+                      {feedback.improvements.map((s, i) => (
+                        <li key={i} className="flex gap-2 text-sm text-stone-700">
+                          <span className="text-amber-500">!</span>
+                          {s}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="pt-6 border-t border-stone-100 flex justify-center">
+                  <Button onClick={handleEndInterview} size="lg">
+                    Close & Start New Interview
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         )}

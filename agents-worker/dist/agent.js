@@ -1,580 +1,348 @@
-import { defineAgent, AutoSubscribe, voice } from "@livekit/agents";
+import { defineAgent, AutoSubscribe, voice, llm } from "@livekit/agents";
+import * as google from "@livekit/agents-plugin-google";
 const { Agent: VoiceAgent, AgentSession, AgentSessionEventTypes } = voice;
 const AGENT_NAME = "Alex";
-const AGENT_TITLE = "Senior Interviewer";
-const MAX_STAGE_DURATION = {
-  selfIntro: 24e4,
-  // 4 minutes
-  pastExperience: 42e4
-  // 7 minutes
+const SELF_INTRO_TURNS = 2;
+const PAST_EXP_TURNS = 2;
+const MIN_WORDS_FOR_COMPLETE_RESPONSE = 20;
+const SILENCE_TIMEOUT_MS = {
+  selfIntro: 3e3,
+  // 3 seconds for self-intro (conversational)
+  pastExperience: 5e3,
+  // 5 seconds for past experience (more thoughtful responses needed)
+  ending: 3e3
+  // 3 seconds for ending (not used but defined for type safety)
 };
-const MAX_TOTAL_INTERVIEW_DURATION = 9e5;
-const SILENCE_TIMEOUT = 3e4;
-const TRANSITION_DELAY = 15e3;
-const SESSION_INIT_DELAY = 2e3;
-const MIN_INTRO_LENGTH = 50;
-const MIN_INTRO_SENTENCES = 2;
-const MIN_PAST_EXPERIENCE_RESPONSES = 2;
-const SELF_INTRO_OPENING = `Hi! I'm ${AGENT_NAME}, your ${AGENT_TITLE}. I'm here to help you practice for your upcoming interviews. Please give me a concise self-introduction and tell me what you're looking for next.`;
-const PAST_EXPERIENCE_BRIDGE = `Thank you for that introduction. I'm ${AGENT_NAME}, and I appreciate you sharing that with me. Now, let's move on to discussing your past experience. I'd like to hear about a recent project you worked on and your role in it.`;
-const INTERVIEW_COMPLETION_MESSAGE = `Thank you for the practice session. This is ${AGENT_NAME} signing off. Best of luck with your interviews!`;
-function broadcastStage(room, stage) {
-  try {
-    if (room?.localParticipant) {
-      room.localParticipant.publishData(
-        Buffer.from(JSON.stringify({ type: "stage", stage })),
-        { reliable: true }
-      );
-    }
-  } catch (err) {
-    console.error("Failed to broadcast stage", err);
-  }
+function buildSelfIntroInstructions(profileData) {
+  return `You are ${AGENT_NAME}, a friendly mock interviewer helping someone practice for job interviews.
+
+CURRENT STAGE: Self-Introduction
+
+CRITICAL RULES - NEVER BREAK THESE:
+- NEVER say filler phrases like: "I'm listening", "Go ahead", "Okay", "I understand", "I see", "Take your time", "Continue", "Please go on"
+- NEVER respond to incomplete statements - you will receive COMPLETE thoughts only
+- NEVER ask them to repeat or say you didn't understand
+
+Your task:
+1. Listen to their introduction and engage naturally - they may speak in shorter bursts
+2. Respond with a brief, warm comment or question about what they just shared
+3. Keep your responses to 1-2 sentences. Be conversational and encouraging.
+4. Ask ONE specific follow-up question to keep the conversation flowing naturally
+5. Help them build their introduction organically rather than requiring long monologues
+
+Be conversational - respond to what they say naturally, even if it's just a few sentences.
+DO NOT say goodbye or end the interview.
+${profileData?.name ? `The candidate's name is ${profileData.name}.` : ""}`;
 }
-function broadcastTranscript(room, payload) {
-  try {
-    if (room?.localParticipant) {
-      room.localParticipant.publishData(
-        Buffer.from(JSON.stringify({ type: "transcript", ...payload })),
-        { reliable: false }
-      );
-    }
-  } catch (err) {
-    console.error("Failed to broadcast transcript", err);
-  }
+function buildPastExperienceInstructions(profileData, introSummary) {
+  return `You are ${AGENT_NAME}, a friendly mock interviewer.
+
+CURRENT STAGE: Past Experience Discussion
+
+Context from their intro: ${introSummary || "They just introduced themselves."}
+
+CRITICAL RULES - NEVER BREAK THESE:
+- NEVER say filler phrases like: "I'm listening", "Go ahead", "Okay", "I understand", "I see", "Take your time", "Continue", "Please go on"
+- NEVER respond to incomplete statements - you will receive COMPLETE thoughts only
+- NEVER ask them to repeat or say you didn't understand
+
+Your task:
+1. Ask about specific projects, achievements, or challenges from their work/academic experience
+2. Use the STAR method - dig into Situation, Task, Action, and Result
+3. Ask 4-5 focused questions total, going deeper into interesting topics
+4. Be curious and encouraging. Show genuine interest in their experiences.
+
+Keep questions SHORT (2-3 sentences max) and focused. Let them do most of the talking.
+DO NOT end the interview yet - keep asking questions.
+${profileData?.experience?.[0] ? `They have experience as ${profileData.experience[0].position} at ${profileData.experience[0].company}.` : ""}`;
 }
+const AGENT_INTRO = `Hi! I'm ${AGENT_NAME}, and I'll be your interviewer today for this mock interview practice session. I'm here to help you prepare and give you a realistic interview experience. Let's get started!
+
+Please tell me a bit about yourself. You can start with your name, background, education, and what you're looking for in your career. Feel free to speak naturally - I'll ask follow-up questions to help build out your introduction.`;
+const TRANSITION_MESSAGE = `Thanks for sharing that with me! You gave a really clear introduction about your background and goals. Now let's dive deeper into your experience. Tell me about a specific project or achievement you're particularly proud of - what was the situation, what did you do, and what was the result?`;
+const ENDING_MESSAGE = `Thank you so much for this practice session! You did a great job. I hope this was helpful for your interview preparation. You can now click the disconnect button to end the session. Best of luck with your interviews!`;
 var agent_default = defineAgent({
   entry: async (ctx) => {
     let profileData = null;
-    let jobDescription = null;
     try {
       const metadata = ctx.job?.metadata ? JSON.parse(ctx.job.metadata) : {};
       profileData = metadata.profile || null;
-      jobDescription = metadata.jobDescription || null;
-      console.log("Profile data loaded:", profileData ? "Yes" : "No");
-      console.log("Job description loaded:", jobDescription ? "Yes" : "No");
+      console.log("Profile loaded:", profileData ? "Yes" : "No");
     } catch (err) {
       console.error("Failed to parse metadata:", err);
     }
-    const sttModel = "deepgram";
-    const llmModel = "google/gemini-2.0-flash-lite";
-    const ttsModel = "elevenlabs";
-    function buildSelfIntroInstructions() {
-      let base = `You are ${AGENT_NAME}, a ${AGENT_TITLE} conducting a professional mock interview. Your role is to help the candidate practice their self-introduction.
-
-Your identity: You are ${AGENT_NAME}, a ${AGENT_TITLE}. Use your name naturally throughout the conversation.
-
-Goals:
-- Start with a warm, brief greeting${profileData?.name ? ` (their name is ${profileData.name})` : ""}
-- Introduce yourself as ${AGENT_NAME}
-- Ask them to give a concise self-introduction covering: who they are, their background, and what they're looking for next
-
-IMPORTANT - Introduction Guidelines:
-- WAIT for the user to COMPLETE their statement before responding - don't rush or interrupt
-- Be patient and let them finish speaking, even if there are pauses
-- A good introduction should include: their name/identity, their background/experience, and what they're looking for next
-- If their response is very brief (less than 30 characters or just greetings), ask ONE simple follow-up question like "Could you tell me a bit more about your background?"
-- After asking ONE follow-up, be patient and wait - don't keep asking more questions
-- If they refuse or say "I don't want to tell", acknowledge it briefly and encourage them once, then wait patiently
-- Only transition to the next stage when you have received a COMPLETE introduction (at least 50+ characters with multiple sentences covering background and goals)
-- When you have enough information, give a brief positive acknowledgement like "Thank you for that introduction" or "Great, thanks for sharing that" before transitioning
-- Keep responses conversational, encouraging, and BRIEF - don't over-explain
-- Do NOT transition if the introduction is incomplete or just fragments
-- MOST IMPORTANTLY: Wait for the user to finish speaking before responding - be patient`;
-      if (profileData?.summary) {
-        base += `
-
-Note: You have access to their profile summary, but let them speak naturally. Only reference it if they ask for help or seem stuck.`;
-      }
-      return base;
-    }
-    function buildPastExperienceInstructions() {
-      let base = `You are ${AGENT_NAME}, a ${AGENT_TITLE} asking about past work experience and projects. Your goal is to help them practice answering behavioral and technical questions.
-
-Your identity: You are ${AGENT_NAME}, a ${AGENT_TITLE}. Use your name naturally throughout the conversation.
-
-Guidelines:
-- Ask 2-4 specific questions about their past roles, projects, or achievements
-- Use the STAR method (Situation, Task, Action, Result) framework when appropriate
-- Keep each question concise and focused
-- Ask follow-up questions if their answers are too brief
-- Be encouraging and professional
-- Do NOT return to self-introduction topics
-- After 2-3 good responses, naturally conclude the interview by thanking them and signing off as ${AGENT_NAME}`;
-      if (profileData?.experience && profileData.experience.length > 0) {
-        const recentExp = profileData.experience.slice(0, 2);
-        base += `
-
-Their recent experience includes:
-`;
-        recentExp.forEach((exp, idx) => {
-          base += `${idx + 1}. ${exp.position} at ${exp.company}${exp.highlights?.length ? ` - Key points: ${exp.highlights.slice(0, 2).join(", ")}` : ""}
-`;
-        });
-        base += `
-Reference these naturally in your questions, but let them elaborate. Don't just read back their resume.`;
-      }
-      if (profileData?.projects && profileData.projects.length > 0) {
-        base += `
-
-They have projects: ${profileData.projects.map((p) => p.name).join(", ")}. You can ask about these if relevant.`;
-      }
-      if (jobDescription) {
-        base += `
-
-Job Description Context: ${jobDescription.substring(0, 500)}...
-
-Tailor your questions to assess fit for this role, but keep questions general enough for practice.`;
-      }
-      return base;
-    }
-    function buildAgent(id, instructions) {
-      return new VoiceAgent({
-        id,
-        instructions,
-        stt: sttModel,
-        llm: llmModel,
-        tts: ttsModel,
-        allowInterruptions: false,
-        turnDetection: "stt"
-      });
-    }
-    const SelfIntroAgent = buildAgent("selfIntro", buildSelfIntroInstructions());
-    const PastExperienceAgent = buildAgent("pastExperience", buildPastExperienceInstructions());
-    class StageOrchestrator {
-      // Track if agent is currently speaking
-      constructor(session2, ctx2, profileData2) {
-        this.lastAISpeechText = "";
-        this.userTurnCount = 0;
-        this.hasTransitioned = false;
-        this.userInputBuffer = "";
-        // Track accumulated user input
-        this.lastUserInputTime = 0;
-        this.followUpAsked = false;
-        // Track if we've asked a follow-up question
-        this.agentIsSpeaking = false;
-        this.session = session2;
-        this.ctx = ctx2;
-        this.profileData = profileData2;
-        const now = Date.now();
-        this.state = {
-          stage: "selfIntro",
-          stageStart: now,
-          stageDeadline: now + MAX_STAGE_DURATION.selfIntro,
-          lastUserActivity: now,
-          nudged: false,
-          isTransitioning: false,
-          isShuttingDown: false,
-          interviewStartTime: now,
-          pastExperienceResponseCount: 0
-        };
-        this.userTurnCount = 0;
-        this.hasTransitioned = false;
-        this.lastAISpeechText = "";
-      }
-      async start() {
-        try {
-          this.attachListeners();
-          this.attachRoomListeners();
-          await this.session.start({
-            agent: SelfIntroAgent,
-            room: this.ctx.room
-          });
-          broadcastStage(this.ctx.room, this.state.stage);
-          await new Promise((resolve) => setTimeout(resolve, SESSION_INIT_DELAY));
-          if (!this.state.isShuttingDown) {
-            console.log("Agent speaking opening prompt...");
-            const greeting = this.profileData?.name ? `Hi ${this.profileData.name}! I'm ${AGENT_NAME}, your ${AGENT_TITLE}. I'm here to help you practice for your upcoming interviews. Please give me a concise self-introduction and tell me what you're looking for next.` : SELF_INTRO_OPENING;
-            broadcastTranscript(this.ctx.room, {
-              role: "ai",
-              text: greeting,
-              stage: this.state.stage
-            });
-            this.lastAISpeechText = greeting;
-            this.agentIsSpeaking = true;
-            await this.session.say(greeting, { addToChatCtx: true });
-            setTimeout(() => {
-              this.agentIsSpeaking = false;
-            }, 3e3);
-          }
-          this.resetTimers();
-          this.startInterviewDurationTimer();
-        } catch (error) {
-          console.error("Failed to start orchestrator:", error);
-          throw error;
-        }
-      }
-      attachRoomListeners() {
-        this.roomDisconnectHandler = () => {
-          console.log("Room disconnected, cleaning up...");
-          this.cleanup();
-        };
-        this.ctx.room.on("disconnected", this.roomDisconnectHandler);
-        this.participantDisconnectHandler = () => {
-          const participants = Array.from(this.ctx.room.remoteParticipants.values());
-          if (participants.length === 0) {
-            console.log("All participants disconnected, shutting down...");
-            this.cleanup();
-          }
-        };
-        this.ctx.room.on("participantDisconnected", this.participantDisconnectHandler);
-      }
-      attachListeners() {
-        this.session.on(AgentSessionEventTypes.UserInputTranscribed, (ev) => {
-          if (this.state.isShuttingDown) return;
-          const text = ev.transcript || ev.text || ev.message || "";
-          if (!text || text.trim() === "") {
-            return;
-          }
-          console.log("User input transcribed:", text);
-          if (text && text !== "[object Object]") {
-            console.log("Full event:", JSON.stringify(ev, null, 2));
-          }
-          this.state.lastUserActivity = Date.now();
-          this.state.nudged = false;
-          this.userTurnCount++;
-          this.lastUserInputTime = Date.now();
-          const isSubstantialPositiveContent = text.length > 20 && text.toLowerCase().match(/\b(background|experience|work|studied|degree|graduate|student|engineer|developer|designer|manager|worked|job|role|position|masters|bachelor|university|college|project|projects|worked on|looking|want|interested|seeking|goal|next|future|opportunity|career|hoping|aspiring|preparing|support|different)\b/i);
-          if (isSubstantialPositiveContent && this.userInputBuffer.toLowerCase().match(/\b(don't want|won't|can't|refuse|not telling|no more|move on)\b/i)) {
-            console.log("User provided substantial positive content after negative response - resetting buffer focus");
-            this.userInputBuffer = text;
-          } else {
-            if (this.userInputBuffer && !this.userInputBuffer.endsWith(" ")) {
-              this.userInputBuffer += " " + text;
-            } else {
-              this.userInputBuffer = text;
-            }
-          }
-          broadcastTranscript(this.ctx.room, {
-            role: "user",
-            text,
-            stage: this.state.stage
-          });
-          this.resetSilenceTimer();
-          if (this.transitionTimer) {
-            clearTimeout(this.transitionTimer);
-            this.transitionTimer = void 0;
-          }
-          const accumulatedText = this.userInputBuffer.trim();
-          const hasMinimumLength = accumulatedText.length >= MIN_INTRO_LENGTH;
-          const sentenceCount = (accumulatedText.match(/[.!?]+/g) || []).length;
-          const hasMultipleSentences = sentenceCount >= MIN_INTRO_SENTENCES;
-          const recentText = accumulatedText.length > 200 ? accumulatedText.substring(accumulatedText.length - 200) : accumulatedText;
-          const hasBackground = recentText.toLowerCase().match(/\b(background|experience|work|studied|degree|graduate|student|engineer|developer|designer|manager|worked|job|role|position|masters|bachelor|university|college|project|projects|worked on)\b/i);
-          const hasGoals = recentText.toLowerCase().match(/\b(looking|want|interested|seeking|goal|next|future|opportunity|career|hoping|aspiring|preparing|support|different)\b/i);
-          const isQuestion = accumulatedText.trim().endsWith("?");
-          const isFragment = accumulatedText.split(/\s+/).length < 8;
-          const isJustGreeting = accumulatedText.toLowerCase().match(/^(hi|hello|hey|okay|ok|i|k\.|that's)/i) && accumulatedText.length < 30;
-          const recentIsNegative = recentText.toLowerCase().match(/\b(don't want|won't|can't|refuse|not telling|no more|move on|nothing|nope|nah)\b/i) && !recentText.toLowerCase().match(/\b(but|however|although|except)\b/i) && !hasBackground && !hasGoals;
-          const isCompleteIntroduction = hasMinimumLength && hasMultipleSentences && (hasBackground || hasGoals) && !isQuestion && !isFragment && !isJustGreeting && !recentIsNegative && !this.agentIsSpeaking;
-          if (this.state.stage === "selfIntro" && !isCompleteIntroduction && accumulatedText.length > 0) {
-            const reason = recentIsNegative ? "recent negative response" : !hasMinimumLength ? "too short" : !hasMultipleSentences ? "not enough sentences" : !hasBackground && !hasGoals ? "missing key content" : isQuestion ? "is a question" : isFragment ? "is fragment" : "unknown";
-            console.log(`Incomplete introduction detected: "${accumulatedText.substring(0, 50)}..." - reason: ${reason}`);
-          }
-        });
-        this.session.on(AgentSessionEventTypes.SpeechCreated, async (ev) => {
-          if (this.state.isShuttingDown) return;
-          const speechHandle = ev.speechHandle;
-          if (speechHandle) {
-            console.log("AI speech created event received");
-            this.agentIsSpeaking = true;
-            if (speechHandle.doneFut && typeof speechHandle.doneFut.then === "function") {
-              speechHandle.doneFut.then(() => {
-                console.log("AI speech completed");
-                this.agentIsSpeaking = false;
-                if (this.state.stage === "selfIntro" && !this.hasTransitioned) {
-                  setTimeout(() => {
-                    this.checkAndTransitionIfReady();
-                  }, 5e3);
-                }
-              }).catch(() => {
-                this.agentIsSpeaking = false;
-              });
-            } else {
-              setTimeout(() => {
-                this.agentIsSpeaking = false;
-              }, 5e3);
-            }
-            setTimeout(async () => {
-              try {
-                const chatCtx = this.session.chatCtx;
-                if (chatCtx && Array.isArray(chatCtx.messages)) {
-                  const lastMessage = chatCtx.messages[chatCtx.messages.length - 1];
-                  if (lastMessage && lastMessage.role === "assistant") {
-                    const text = lastMessage.content || lastMessage.text || "";
-                    if (text && text.trim().length > 0 && text !== this.lastAISpeechText) {
-                      const isExplicitCall = text.includes(SELF_INTRO_OPENING) || text.includes(PAST_EXPERIENCE_BRIDGE) || text.includes("Still there?");
-                      if (!isExplicitCall) {
-                        console.log("Captured LLM response:", text.substring(0, 100));
-                        this.lastAISpeechText = text;
-                        broadcastTranscript(this.ctx.room, {
-                          role: "ai",
-                          text,
-                          stage: this.state.stage
-                        });
-                      }
-                    }
-                  }
-                }
-              } catch (err) {
-              }
-            }, 1500);
-          }
-        });
-        this.session.on(AgentSessionEventTypes.Error, (ev) => {
-          console.error("Session error:", ev);
-          if (ev.error && typeof ev.error === "object") {
-            const errorMessage = ev.error.message || String(ev.error);
-            if (errorMessage.includes("network") || errorMessage.includes("timeout")) {
-              console.log("Transient error detected, continuing...");
-              return;
-            }
-          }
-          if (!this.state.isShuttingDown) {
-            console.error("Fatal session error, shutting down gracefully...");
-            this.cleanup();
-          }
-        });
-        this.session.on(AgentSessionEventTypes.AgentStateChanged, (ev) => {
-          const state = ev.state || ev.status || ev;
-          console.log("Agent state changed:", state);
-          console.log("Full state event:", JSON.stringify(ev, null, 2));
-        });
-      }
-      clearTimers() {
-        if (this.silenceTimer) {
-          clearTimeout(this.silenceTimer);
-          this.silenceTimer = void 0;
-        }
-        if (this.stageTimer) {
-          clearTimeout(this.stageTimer);
-          this.stageTimer = void 0;
-        }
-        if (this.transitionTimer) {
-          clearTimeout(this.transitionTimer);
-          this.transitionTimer = void 0;
-        }
-        if (this.interviewDurationTimer) {
-          clearTimeout(this.interviewDurationTimer);
-          this.interviewDurationTimer = void 0;
-        }
-      }
-      startInterviewDurationTimer() {
-        this.interviewDurationTimer = setTimeout(() => {
-          if (!this.state.isShuttingDown) {
-            console.log("Maximum interview duration reached, ending session...");
-            this.endInterview("time-limit");
-          }
-        }, MAX_TOTAL_INTERVIEW_DURATION);
-      }
-      checkAndTransitionIfReady() {
-        if (this.state.isShuttingDown || this.state.isTransitioning || this.hasTransitioned) {
-          return;
-        }
-        if (this.state.stage !== "selfIntro") {
-          return;
-        }
-        const accumulatedText = this.userInputBuffer.trim();
-        if (!accumulatedText || accumulatedText.length === 0) {
-          return;
-        }
-        const hasMinimumLength = accumulatedText.length >= MIN_INTRO_LENGTH;
-        const sentenceCount = (accumulatedText.match(/[.!?]+/g) || []).length;
-        const hasMultipleSentences = sentenceCount >= MIN_INTRO_SENTENCES;
-        const recentText = accumulatedText.length > 200 ? accumulatedText.substring(accumulatedText.length - 200) : accumulatedText;
-        const hasBackground = recentText.toLowerCase().match(/\b(background|experience|work|studied|degree|graduate|student|engineer|developer|designer|manager|worked|job|role|position|masters|bachelor|university|college|project|projects|worked on)\b/i);
-        const hasGoals = recentText.toLowerCase().match(/\b(looking|want|interested|seeking|goal|next|future|opportunity|career|hoping|aspiring|preparing|support|different)\b/i);
-        const isQuestion = accumulatedText.trim().endsWith("?");
-        const isFragment = accumulatedText.split(/\s+/).length < 8;
-        const isJustGreeting = accumulatedText.toLowerCase().match(/^(hi|hello|hey|okay|ok|i|k\.|that's)/i) && accumulatedText.length < 30;
-        const isNegativeResponse = recentText.toLowerCase().match(/\b(don't want|won't|can't|refuse|not telling|no more|move on|nothing|nope|nah)\b/i) && !recentText.toLowerCase().match(/\b(but|however|although|except)\b/i) && !hasBackground && !hasGoals;
-        const isCompleteIntroduction = hasMinimumLength && hasMultipleSentences && (hasBackground || hasGoals) && !isQuestion && !isFragment && !isJustGreeting && !isNegativeResponse && !this.agentIsSpeaking;
-        if (isCompleteIntroduction) {
-          const timeSinceLastInput = Date.now() - this.lastUserInputTime;
-          const userStillSpeaking = timeSinceLastInput < 3e3;
-          if (!userStillSpeaking && !this.agentIsSpeaking) {
-            console.log(`Transitioning after complete introduction and agent finished speaking. Accumulated text: "${accumulatedText.substring(0, 100)}..."`);
-            this.transitionTo("pastExperience", "user-turn-complete").catch((err) => {
-              console.error("Failed to transition:", err);
-            });
-          }
-        }
-      }
-      async checkInterviewCompletion() {
-        if (this.state.isShuttingDown || this.state.isTransitioning) {
-          return;
-        }
-        if (this.state.stage === "pastExperience" && this.state.pastExperienceResponseCount >= MIN_PAST_EXPERIENCE_RESPONSES) {
-          setTimeout(() => {
-            if (!this.state.isShuttingDown && this.state.stage === "pastExperience" && Date.now() - this.state.lastUserActivity > 5e3) {
-              console.log("Interview completion criteria met, ending session...");
-              this.endInterview("completion");
-            }
-          }, 5e3);
-        }
-      }
-      async endInterview(reason) {
-        if (this.state.isShuttingDown) {
-          return;
-        }
-        console.log(`Ending interview: ${reason}`);
-        this.state.isShuttingDown = true;
-        this.clearTimers();
-        try {
-          const completionMessage = reason === "completion" ? `Thank you for the practice session, ${this.profileData?.name || "there"}. This is ${AGENT_NAME} signing off. You've covered the key areas we discussed. Best of luck with your interviews!` : `Thank you for the practice session. We've reached our time limit. This is ${AGENT_NAME} signing off. Best of luck with your interviews!`;
-          broadcastTranscript(this.ctx.room, {
-            role: "ai",
-            text: completionMessage,
-            stage: this.state.stage
-          });
-          await this.session.say(completionMessage, { addToChatCtx: true });
-          await new Promise((resolve) => setTimeout(resolve, 3e3));
-          await this.ctx.room.disconnect();
-        } catch (error) {
-          console.error("Error ending interview:", error);
-          try {
-            await this.ctx.room.disconnect();
-          } catch (err) {
-            console.error("Error disconnecting room:", err);
-          }
-        }
-      }
-      resetTimers() {
-        this.resetSilenceTimer();
-        const now = Date.now();
-        const remaining = Math.max(5e3, this.state.stageDeadline - now);
-        this.stageTimer = setTimeout(() => {
-          this.transitionTo("pastExperience", "stage-timeout");
-        }, remaining);
-      }
-      resetSilenceTimer() {
-        if (this.silenceTimer) {
-          clearTimeout(this.silenceTimer);
-          this.silenceTimer = void 0;
-        }
-        if (this.state.isShuttingDown || this.state.isTransitioning || this.hasTransitioned) {
-          return;
-        }
-        this.silenceTimer = setTimeout(async () => {
-          if (this.state.isShuttingDown || this.state.isTransitioning || this.hasTransitioned) {
-            return;
-          }
-          if (this.state.nudged) {
-            if (this.state.stage === "selfIntro" && !this.hasTransitioned) {
-              this.transitionTo("pastExperience", "silence").catch((err) => {
-                console.error("Failed to transition on silence:", err);
-              });
-            }
-          } else {
-            this.state.nudged = true;
-            const nudgeText = `Still there? This is ${AGENT_NAME}. If you're ready, please continue speaking.`;
-            broadcastTranscript(this.ctx.room, {
-              role: "ai",
-              text: nudgeText,
-              stage: this.state.stage
-            });
-            this.lastAISpeechText = nudgeText;
-            this.agentIsSpeaking = true;
-            try {
-              await this.session.say(nudgeText, {
-                addToChatCtx: false
-              });
-              setTimeout(() => {
-                this.agentIsSpeaking = false;
-              }, 3e3);
-            } catch (err) {
-              console.error("Failed to send nudge:", err);
-              this.agentIsSpeaking = false;
-            }
-            this.resetSilenceTimer();
-          }
-        }, SILENCE_TIMEOUT);
-      }
-      async transitionTo(next, reason) {
-        if (this.state.stage === next || this.state.isTransitioning || this.state.isShuttingDown || this.hasTransitioned) {
-          console.log(`Skipping transition to ${next}: stage=${this.state.stage}, isTransitioning=${this.state.isTransitioning}, hasTransitioned=${this.hasTransitioned}`);
-          return;
-        }
-        console.log(`Starting transition: ${this.state.stage} -> ${next} (reason: ${reason})`);
-        this.state.isTransitioning = true;
-        this.hasTransitioned = true;
-        this.clearTimers();
-        try {
-          await new Promise((resolve) => setTimeout(resolve, 1e3));
-          if (this.state.stage === "selfIntro" && next === "pastExperience") {
-            broadcastTranscript(this.ctx.room, {
-              role: "ai",
-              text: PAST_EXPERIENCE_BRIDGE,
-              stage: next
-            });
-            this.lastAISpeechText = PAST_EXPERIENCE_BRIDGE;
-            this.agentIsSpeaking = true;
-            await this.session.say(PAST_EXPERIENCE_BRIDGE, { addToChatCtx: true });
-            await new Promise((resolve) => setTimeout(resolve, 4e3));
-            this.agentIsSpeaking = false;
-          }
-          this.state = {
-            ...this.state,
-            stage: next,
-            stageStart: Date.now(),
-            stageDeadline: Date.now() + MAX_STAGE_DURATION[next],
-            lastUserActivity: Date.now(),
-            nudged: false,
-            isTransitioning: false,
-            pastExperienceResponseCount: next === "pastExperience" ? 0 : this.state.pastExperienceResponseCount
-          };
-          broadcastStage(this.ctx.room, next);
-          await this.session.updateAgent(PastExperienceAgent);
-          this.userTurnCount = 0;
-          this.userInputBuffer = "";
-          this.lastUserInputTime = 0;
-          this.followUpAsked = false;
-          this.resetTimers();
-          console.log(`Stage transition: ${next} (${reason})`);
-        } catch (error) {
-          console.error("Error during transition:", error);
-          this.state.isTransitioning = false;
-          this.resetTimers();
-          throw error;
-        }
-      }
-      cleanup() {
-        if (this.state.isShuttingDown) {
-          return;
-        }
-        this.state.isShuttingDown = true;
-        console.log("Cleaning up orchestrator...");
-        this.clearTimers();
-        if (this.roomDisconnectHandler) {
-          this.ctx.room.off("disconnected", this.roomDisconnectHandler);
-        }
-        if (this.participantDisconnectHandler) {
-          this.ctx.room.off("participantDisconnected", this.participantDisconnectHandler);
-        }
-      }
-    }
     await ctx.connect(void 0, AutoSubscribe.AUDIO_ONLY);
-    const session = new AgentSession({
-      stt: sttModel,
-      llm: llmModel,
-      tts: ttsModel,
-      turnDetection: "stt",
-      voiceOptions: {
-        allowInterruptions: false,
-        maxEndpointingDelay: 1500,
-        minInterruptionDuration: 900
-      },
-      userData: {}
+    let currentStage = "selfIntro";
+    let selfIntroTurns = 0;
+    let pastExpTurns = 0;
+    let userIntroSummary = "";
+    let isShuttingDown = false;
+    const selfIntroAgent = new VoiceAgent({
+      instructions: buildSelfIntroInstructions(profileData),
+      stt: "deepgram",
+      llm: "google/gemini-2.0-flash-lite",
+      tts: "elevenlabs",
+      allowInterruptions: false,
+      turnDetection: "manual"
+      // We control when to respond
     });
-    const orchestrator = new StageOrchestrator(session, ctx, profileData);
+    const session = new AgentSession({
+      stt: "deepgram",
+      llm: "google/gemini-2.0-flash-lite",
+      tts: "elevenlabs",
+      turnDetection: "manual"
+      // We control when to respond
+    });
+    async function publishData(type, data) {
+      if (isShuttingDown) return;
+      try {
+        const str = JSON.stringify({ type, ...data });
+        const payload = new TextEncoder().encode(str);
+        if (ctx.room.localParticipant) {
+          await ctx.room.localParticipant.publishData(payload, { reliable: true });
+          console.log(`Published data: ${type}`, data);
+        } else {
+          console.warn("Cannot publish data: localParticipant is undefined");
+        }
+      } catch (err) {
+        console.error("Failed to publish data:", err);
+      }
+    }
+    async function transitionToPastExperience() {
+      if (currentStage !== "selfIntro" || isShuttingDown) return;
+      console.log("\n========== TRANSITIONING TO PAST EXPERIENCE ==========\n");
+      currentStage = "pastExperience";
+      pastExpTurns = 0;
+      await publishData("stage", { stage: "pastExperience" });
+      await session.say(TRANSITION_MESSAGE, { addToChatCtx: true });
+      const pastExpAgent = new VoiceAgent({
+        instructions: buildPastExperienceInstructions(profileData, userIntroSummary),
+        stt: "deepgram",
+        llm: "google/gemini-2.0-flash-lite",
+        tts: "elevenlabs",
+        allowInterruptions: false,
+        turnDetection: "manual"
+        // We control when to respond
+      });
+      try {
+        await session.updateAgent(pastExpAgent);
+        console.log("Switched to past experience agent");
+      } catch (err) {
+        console.error("Error switching agent:", err);
+      }
+    }
+    async function endInterview() {
+      if (currentStage === "ending" || isShuttingDown) return;
+      console.log("\n========== ENDING INTERVIEW ==========\n");
+      currentStage = "ending";
+      await publishData("stage", { stage: "ending" });
+      await session.say(ENDING_MESSAGE, { addToChatCtx: true });
+      console.log("Generating feedback...");
+      try {
+        const feedbackLlm = new google.LLM({
+          model: "gemini-2.0-flash-lite"
+        });
+        const feedbackPrompt = `
+          You are an expert interview coach. I need you to evaluate a candidate based on their mock interview transcript.
+          
+          Interview Context:
+          - Candidate Name: ${profileData?.name || "Unknown"}
+          - Self Introduction Summary: ${userIntroSummary}
+          - Total Speech Transcript: ${accumulatedUserSpeech}
+          
+          Please analyze their performance and provide structured feedback in valid JSON format.
+          Do NOT output any markdown blocks (like \`\`\`json), just the raw JSON object.
+          
+          JSON Schema:
+          {
+            "score": number, // Overall score 0-100
+            "summary": "string", // Brief summary of performance (1-2 sentences)
+            "strengths": ["string", "string"], // Top 2-3 strengths
+            "improvements": ["string", "string"] // Top 2-3 areas for improvement
+          }
+          
+          Focus on communication clarity, content relevance, and professional tone.
+        `;
+        const response = await feedbackLlm.chat({
+          messages: [
+            { role: llm.ChatRole.USER, content: feedbackPrompt }
+          ]
+        });
+        const content = response.chatChatMessage.content || "";
+        console.log("Raw feedback:", content);
+        let feedbackData;
+        try {
+          const jsonStr = content.replace(/```json\n?|\n?```/g, "").trim();
+          feedbackData = JSON.parse(jsonStr);
+        } catch (e) {
+          console.error("Failed to parse feedback JSON:", e);
+          feedbackData = {
+            score: 85,
+            summary: "Good effort! I couldn't parse the detailed feedback, but you spoke clearly.",
+            strengths: ["Clear communication", "Good engagement"],
+            improvements: ["Expand more on details", "Use more structured answers"]
+          };
+        }
+        await publishData("feedback", feedbackData);
+        console.log("Feedback sent to frontend");
+      } catch (err) {
+        console.error("Error generating feedback:", err);
+      }
+      console.log("Interview completed - waiting for user to disconnect");
+    }
+    let isOpeningIntro = true;
+    let pendingTransition = false;
+    let pendingEnd = false;
+    let lastAgentState = "initializing";
+    let speechStartedAt = 0;
+    let lastUserWords = 0;
+    let currentTurnWords = 0;
+    let accumulatedUserSpeech = "";
+    let silenceTimer = null;
+    let agentIsSpeaking = false;
+    async function triggerAgentResponse() {
+      if (isShuttingDown || agentIsSpeaking || isOpeningIntro) return;
+      if (currentTurnWords < 5) {
+        console.log(`Only ${currentTurnWords} words - waiting for more...`);
+        return;
+      }
+      if (pendingTransition || pendingEnd) {
+        console.log(`[${currentStage}] Not responding - transition/ending in progress`);
+        return;
+      }
+      const timeout = SILENCE_TIMEOUT_MS[currentStage] || 3e3;
+      console.log(`[${currentStage}] Triggering response after ${timeout}ms silence (${currentTurnWords} words)`);
+      if (currentStage === "selfIntro" && selfIntroTurns >= SELF_INTRO_TURNS - 1) {
+        console.log(`[${currentStage}] Smart transition: Skipping generic reply, going straight to next stage`);
+        await transitionToPastExperience();
+        return;
+      }
+      if (currentStage === "pastExperience" && pastExpTurns >= PAST_EXP_TURNS - 1) {
+        console.log(`[${currentStage}] Smart transition: Skipping generic reply, ending interview`);
+        await endInterview();
+        return;
+      }
+      try {
+        await session.generateReply();
+      } catch (err) {
+        console.error("Error generating reply:", err);
+      }
+    }
+    session.on(AgentSessionEventTypes.UserInputTranscribed, (ev) => {
+      if (isShuttingDown) return;
+      const text = ev.transcript || "";
+      const isFinal = ev.isFinal !== false;
+      if (!text.trim()) return;
+      if (agentIsSpeaking) return;
+      console.log(`[${currentStage}] User: "${text}" ${isFinal ? "(final)" : "(partial)"}`);
+      if (silenceTimer) {
+        clearTimeout(silenceTimer);
+        silenceTimer = null;
+      }
+      if (isFinal) {
+        const wordCount = text.trim().split(/\s+/).length;
+        currentTurnWords += wordCount;
+        accumulatedUserSpeech += " " + text;
+        if (currentStage === "selfIntro") {
+          userIntroSummary += " " + text;
+        }
+        const timeout = SILENCE_TIMEOUT_MS[currentStage] || 3e3;
+        silenceTimer = setTimeout(() => {
+          triggerAgentResponse();
+        }, timeout);
+      }
+    });
+    session.on(AgentSessionEventTypes.SpeechCreated, () => {
+      if (isShuttingDown) return;
+      speechStartedAt = Date.now();
+      if (isOpeningIntro) {
+        console.log(`[${currentStage}] Agent speaking (opening intro)`);
+        return;
+      }
+      console.log(`[${currentStage}] Agent speaking...`);
+    });
+    session.on(AgentSessionEventTypes.AgentStateChanged, (ev) => {
+      if (isShuttingDown) return;
+      const oldState = ev?.oldState || lastAgentState;
+      const newState = ev?.newState || "unknown";
+      lastAgentState = newState;
+      console.log(`Agent state: ${oldState} \u2192 ${newState}`);
+      if (newState === "speaking") {
+        agentIsSpeaking = true;
+        if (silenceTimer) {
+          clearTimeout(silenceTimer);
+          silenceTimer = null;
+        }
+      }
+      if (oldState === "speaking" && newState === "listening") {
+        agentIsSpeaking = false;
+        lastUserWords = currentTurnWords;
+        currentTurnWords = 0;
+        accumulatedUserSpeech = "";
+      }
+      if (isOpeningIntro && newState === "listening" && oldState === "speaking") {
+        isOpeningIntro = false;
+        console.log("Opening intro completed - ready to listen");
+        return;
+      }
+      if (oldState === "speaking" && newState === "listening") {
+        const speechDuration = Date.now() - speechStartedAt;
+        if (speechDuration < 3e3) {
+          console.log(`Agent speech was short (${speechDuration}ms) - not counting as exchange`);
+          return;
+        }
+        if (lastUserWords < MIN_WORDS_FOR_COMPLETE_RESPONSE) {
+          console.log(`User said ${lastUserWords} words (need ${MIN_WORDS_FOR_COMPLETE_RESPONSE}) - not counting as exchange`);
+          return;
+        }
+        console.log(`[${currentStage}] Complete exchange (agent: ${speechDuration}ms, user: ${lastUserWords} words)`);
+        if (currentStage === "selfIntro") {
+          selfIntroTurns++;
+          console.log(`Self-intro exchange ${selfIntroTurns}/${SELF_INTRO_TURNS} completed`);
+          if (selfIntroTurns >= SELF_INTRO_TURNS && !pendingTransition) {
+            pendingTransition = true;
+            console.log("Transitioning to past experience...");
+            setTimeout(() => transitionToPastExperience(), 2e3);
+          }
+        } else if (currentStage === "pastExperience") {
+          pastExpTurns++;
+          console.log(`Past experience exchange ${pastExpTurns}/${PAST_EXP_TURNS} completed`);
+          if (pastExpTurns >= PAST_EXP_TURNS && !pendingEnd) {
+            pendingEnd = true;
+            console.log("Ending interview...");
+            setTimeout(() => endInterview(), 500);
+          }
+        }
+      }
+    });
+    session.on(AgentSessionEventTypes.Error, (ev) => {
+      console.error("Session error:", ev);
+    });
+    ctx.room.on("participantDisconnected", () => {
+      const participants = Array.from(ctx.room.remoteParticipants.values());
+      if (participants.length === 0) {
+        console.log("All participants disconnected");
+        isShuttingDown = true;
+      }
+    });
     ctx.room.on("disconnected", () => {
-      console.log("Room disconnected, cleaning up orchestrator...");
-      orchestrator.cleanup();
+      console.log("Room disconnected");
+      isShuttingDown = true;
     });
     try {
-      await orchestrator.start();
+      await session.start({
+        agent: selfIntroAgent,
+        room: ctx.room
+      });
+      console.log("\n========== INTERVIEW STARTED ==========");
+      console.log(`Stage 1: Self-Introduction (${SELF_INTRO_TURNS} exchanges)`);
+      console.log(`Stage 2: Past Experience (${PAST_EXP_TURNS} exchanges)
+`);
+      await new Promise((resolve) => setTimeout(resolve, 2e3));
+      console.log("Agent introducing itself...");
+      await session.say(AGENT_INTRO, { addToChatCtx: true });
     } catch (error) {
-      console.error("Failed to start orchestrator:", error);
-      orchestrator.cleanup();
+      console.error("Failed to start session:", error);
       throw error;
     }
   }
